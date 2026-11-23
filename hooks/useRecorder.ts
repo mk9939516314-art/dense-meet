@@ -174,15 +174,13 @@ export function useRecorder(onChange: (on: boolean) => void) {
         sink.current = null;
         if (wantDrive) {
           if (!clientId()) {
-            if (mobile) throw new Error('Google Drive is not set up on this site, so a phone cannot record yet.');
-            notes.push('Google Drive is not set up on this site.');
+            notes.push('Google Drive is not linked, so the recording will download to this device when you stop.');
           } else {
             try {
               if (!driveLinked()) await driveToken(true);
               drive.current = await startDriveUpload(name, mime || 'video/webm', day);
             } catch {
-              if (mobile) throw new Error('Link Google Drive in Settings to record on a phone.');
-              notes.push('Could not reach Google Drive.');
+              notes.push('Could not reach Google Drive, so the recording will download to this device when you stop.');
             }
           }
         }
@@ -192,10 +190,6 @@ export function useRecorder(onChange: (on: boolean) => void) {
           } catch {
             notes.push('Pick a recording folder in Settings.');
           }
-        }
-        if (!drive.current && !sink.current && !mobile) {
-          // Last resort on a computer: a normal download at the end.
-          notes.push('Saving to a normal download.');
         }
 
         // Picture and sound.

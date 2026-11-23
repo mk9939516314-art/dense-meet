@@ -11,7 +11,6 @@ import type { LayoutMode } from '@/lib/types';
 import { cx, mmss } from '@/lib/util';
 import Starfield from '../Starfield';
 import ControlBar, { type PanelId } from './ControlBar';
-import SettingsDialog from './SettingsDialog';
 import Stage from './Stage';
 import { AudioPlayer } from './media';
 import ChatPanel from './panels/ChatPanel';
@@ -29,7 +28,6 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
   const [mode, setMode] = useState<LayoutMode>('star');
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
-  const [settings, setSettings] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [captionsOn, setCaptionsOn] = useState(true);
   const [myNotes, setMyNotes] = useState(true);
@@ -382,7 +380,8 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         canRecord={m.can('record')}
         recording={rec.state === 'recording' || rec.state === 'starting'}
         onRecord={() => (rec.state === 'recording' ? rec.stop() : rec.start({ code: roomCode, prefs: loadPrefs(), micTrack: m.getMicTrack(), audioTracks: () => audioRef.current }))}
-        onSettings={() => setSettings(true)}
+        onSettings={() => setMoreSettings(true)}
+        onSwitch={m.switchDevice}
         onCopyLink={copyLink}
       />
 
@@ -390,7 +389,6 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         <AudioPlayer key={a.sid} track={a.track} />
       ))}
 
-      {settings && <SettingsDialog onClose={() => setSettings(false)} onSwitch={m.switchDevice} onMore={() => { setSettings(false); setMoreSettings(true); }} />}
       {moreSettings && <SettingsModal inMeeting start="recording" onClose={() => setMoreSettings(false)} />}
 
       {confirmEnd && (

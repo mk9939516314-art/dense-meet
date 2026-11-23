@@ -24,8 +24,10 @@ import {
   Circle,
   Square,
   ClipboardList,
+  ChevronUp,
 } from 'lucide-react';
 import type { LayoutMode, PInfo } from '@/lib/types';
+import DeviceMenu from './DeviceMenu';
 import { cx } from '@/lib/util';
 
 export type PanelId = 'chat' | 'people' | 'notes' | 'helper' | 'interview';
@@ -57,6 +59,7 @@ type Props = {
   onMode: (m: LayoutMode) => void;
   onCaptions: () => void;
   onSettings: () => void;
+  onSwitch: (kind: MediaDeviceKind, id: string) => void;
   layoutAll: boolean;
   onLayoutAll: () => void;
   canLayoutAll: boolean;
@@ -69,7 +72,7 @@ type Props = {
 const EMOJIS = ['👍', '👏', '🎉', '❤️', '😂', '😮'];
 
 export default function ControlBar(p: Props) {
-  const [open, setOpen] = useState<'react' | 'more' | null>(null);
+  const [open, setOpen] = useState<'react' | 'more' | 'mic' | 'cam' | null>(null);
   const [copied, setCopied] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -112,12 +115,24 @@ export default function ControlBar(p: Props) {
       </div>
 
       <div className="cb-center">
-        <button className={cx('cbtn', !micOn && 'is-off')} type="button" onClick={p.onMic} aria-label={micOn ? 'Turn off microphone' : 'Turn on microphone'} aria-pressed={micOn}>
-          {micOn ? <Mic /> : <MicOff />}
-        </button>
-        <button className={cx('cbtn', !camOn && 'is-off')} type="button" onClick={p.onCam} aria-label={camOn ? 'Turn off camera' : 'Turn on camera'} aria-pressed={camOn}>
-          {camOn ? <Video /> : <VideoOff />}
-        </button>
+        <div className="pop-anchor split">
+          <button className={cx('cbtn', !micOn && 'is-off')} type="button" onClick={p.onMic} aria-label={micOn ? 'Turn off microphone' : 'Turn on microphone'} aria-pressed={micOn}>
+            {micOn ? <Mic /> : <MicOff />}
+          </button>
+          <button className={cx('cbtn-arrow', !micOn && 'is-off', open === 'mic' && 'is-active')} type="button" onClick={() => setOpen(open === 'mic' ? null : 'mic')} aria-label="Microphone and speaker settings" aria-expanded={open === 'mic'}>
+            <ChevronUp />
+          </button>
+          {open === 'mic' && <DeviceMenu kinds={['audioinput', 'audiooutput']} onSwitch={p.onSwitch} />}
+        </div>
+        <div className="pop-anchor split">
+          <button className={cx('cbtn', !camOn && 'is-off')} type="button" onClick={p.onCam} aria-label={camOn ? 'Turn off camera' : 'Turn on camera'} aria-pressed={camOn}>
+            {camOn ? <Video /> : <VideoOff />}
+          </button>
+          <button className={cx('cbtn-arrow', !camOn && 'is-off', open === 'cam' && 'is-active')} type="button" onClick={() => setOpen(open === 'cam' ? null : 'cam')} aria-label="Camera settings" aria-expanded={open === 'cam'}>
+            <ChevronUp />
+          </button>
+          {open === 'cam' && <DeviceMenu kinds={['videoinput']} onSwitch={p.onSwitch} />}
+        </div>
         {p.canShare && (
           <button className={cx('cbtn', p.sharing && 'is-active')} type="button" onClick={p.onShare} aria-label={p.sharing ? 'Stop presenting' : 'Present your screen'} aria-pressed={p.sharing}>
             <MonitorUp />
@@ -178,7 +193,7 @@ export default function ControlBar(p: Props) {
                 </button>
               )}
               <button type="button" role="menuitem" className="menu-item" onClick={() => { p.onSettings(); setOpen(null); }}>
-                <Settings /> Audio and video settings
+                <Settings /> Profile, recording and more
               </button>
               <button type="button" role="menuitem" className="menu-item" onClick={copy}>
                 {copied ? <Check /> : <Copy />} {copied ? 'Link copied' : 'Copy invite link'}
