@@ -165,6 +165,7 @@ export function useRecorder(onChange: (on: boolean) => void) {
   const drive = useRef<DriveUpload | null>(null);
   const sink = useRef<FileSink | null>(null);
   const keep = useRef<Blob[]>([]);
+  const writeQ = useRef<Promise<unknown>>(Promise.resolve());
 
   const cleanup = useCallback(() => {
     cleanups.current.forEach((f) => {
@@ -197,7 +198,7 @@ export function useRecorder(onChange: (on: boolean) => void) {
       setState('starting');
       const d = new Date();
       const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      const mime = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
       const ext = mime.includes('mp4') ? 'mp4' : 'webm';
       const name = `Dense Meet ${pad(d.getHours())}-${pad(d.getMinutes())} (${o.code}).${ext}`;
       const notes: string[] = [];
@@ -261,11 +262,12 @@ export function useRecorder(onChange: (on: boolean) => void) {
         const stream = new MediaStream([...videoTracks, ...dest.stream.getAudioTracks()]);
         const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: mobile ? 1_800_000 : 3_000_000, audioBitsPerSecond: 128_000 });
         keep.current = [];
+        writeQ.current = Promise.resolve();
         const storing = Boolean(drive.current || sink.current);
         rec.ondataavailable = (e) => {
           if (!e.data.size) return;
           drive.current?.push(e.data);
-          sink.current?.write(e.data).catch(() => {});
+          writeQ.current = writeQ.current.then(() => sink.current?.write(e.data)).catch(() => {});
           if (!storing) keep.current.push(e.data);
         };
         rec.onstop = async () => {
@@ -273,6 +275,7 @@ export function useRecorder(onChange: (on: boolean) => void) {
           onChange(false);
           let saved = '';
           if (sink.current) {
+            await writeQ.current;
             await sink.current.close().catch(() => {});
             saved = 'folder';
           }

@@ -27,6 +27,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import type { LayoutMode, PInfo } from '@/lib/types';
+import { usePresence } from '@/lib/usePresence';
 import DeviceMenu from './DeviceMenu';
 import { cx } from '@/lib/util';
 
@@ -74,6 +75,11 @@ const EMOJIS = ['👍', '👏', '🎉', '❤️', '😂', '😮'];
 export default function ControlBar(p: Props) {
   const [open, setOpen] = useState<'react' | 'more' | 'mic' | 'cam' | null>(null);
   const [copied, setCopied] = useState(false);
+  const lastOpen = useRef(open);
+  if (open) lastOpen.current = open;
+  const pres = usePresence(open !== null, 150);
+  const shown = pres.mounted ? (open ?? lastOpen.current) : null;
+  const out = pres.closing;
   const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -122,7 +128,7 @@ export default function ControlBar(p: Props) {
           <button className={cx('cbtn-arrow', !micOn && 'is-off', open === 'mic' && 'is-active')} type="button" onClick={() => setOpen(open === 'mic' ? null : 'mic')} aria-label="Microphone and speaker settings" aria-expanded={open === 'mic'}>
             <ChevronUp />
           </button>
-          {open === 'mic' && <DeviceMenu kinds={['audioinput', 'audiooutput']} onSwitch={p.onSwitch} />}
+          {shown === 'mic' && <DeviceMenu closing={out} kinds={['audioinput', 'audiooutput']} onSwitch={p.onSwitch} />}
         </div>
         <div className={cx('pop-anchor split', !camOn && 'is-off')}>
           <button className={cx('cbtn', !camOn && 'is-off')} type="button" onClick={p.onCam} aria-label={camOn ? 'Turn off camera' : 'Turn on camera'} aria-pressed={camOn}>
@@ -131,7 +137,7 @@ export default function ControlBar(p: Props) {
           <button className={cx('cbtn-arrow', !camOn && 'is-off', open === 'cam' && 'is-active')} type="button" onClick={() => setOpen(open === 'cam' ? null : 'cam')} aria-label="Camera settings" aria-expanded={open === 'cam'}>
             <ChevronUp />
           </button>
-          {open === 'cam' && <DeviceMenu kinds={['videoinput']} onSwitch={p.onSwitch} />}
+          {shown === 'cam' && <DeviceMenu closing={out} kinds={['videoinput']} onSwitch={p.onSwitch} />}
         </div>
         {p.canShare && (
           <button className={cx('cbtn', p.sharing && 'is-active')} type="button" onClick={p.onShare} aria-label={p.sharing ? 'Stop presenting' : 'Present your screen'} aria-pressed={p.sharing}>
@@ -142,8 +148,8 @@ export default function ControlBar(p: Props) {
           <button className={cx('cbtn', open === 'react' && 'is-active')} type="button" onClick={() => setOpen(open === 'react' ? null : 'react')} aria-label="Send a reaction" aria-expanded={open === 'react'}>
             <Smile />
           </button>
-          {open === 'react' && (
-            <div className="popover emoji-pop" role="menu">
+          {shown === 'react' && (
+            <div className={cx('popover emoji-pop', out && 'is-closing')} role="menu">
               {EMOJIS.map((e) => (
                 <button
                   key={e}
@@ -169,8 +175,8 @@ export default function ControlBar(p: Props) {
             <MoreVertical />
             {p.unread > 0 && <span className="dot mob-only" />}
           </button>
-          {open === 'more' && (
-            <div className="popover more-pop" role="menu">
+          {shown === 'more' && (
+            <div className={cx('popover more-pop', out && 'is-closing')} role="menu">
               <div className="seg" role="group" aria-label="Layout">
                 {(['star', 'grid', 'speaker'] as LayoutMode[]).map((m) => (
                   <button key={m} type="button" className={cx(p.mode === m && 'on')} onClick={() => p.onMode(m)}>

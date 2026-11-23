@@ -183,6 +183,9 @@ export default function Landing() {
           <Link href="/history">History</Link>
         </nav>
         <div className="row-gap">
+          <Link className="btn-icon" href="/history" aria-label="Meeting history" title="History">
+            <History />
+          </Link>
           <button className="btn-icon" type="button" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
             <Settings />
           </button>

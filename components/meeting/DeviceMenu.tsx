@@ -21,7 +21,7 @@ async function list(kind: Kind): Promise<Dev[]> {
 }
 
 /** A small floating menu next to the mic or camera button. */
-export default function DeviceMenu({ kinds, onSwitch }: { kinds: Kind[]; onSwitch: (kind: MediaDeviceKind, id: string) => void }) {
+export default function DeviceMenu({ kinds, onSwitch, closing }: { kinds: Kind[]; onSwitch: (kind: MediaDeviceKind, id: string) => void; closing?: boolean }) {
   const [lists, setLists] = useState<Partial<Record<Kind, Dev[]>>>({});
   const [sel, setSel] = useState<Partial<Record<Kind, string>>>({});
 
@@ -39,7 +39,7 @@ export default function DeviceMenu({ kinds, onSwitch }: { kinds: Kind[]; onSwitc
   }, []);
 
   return (
-    <div className="popover device-pop" role="menu">
+    <div className={`popover device-pop${closing ? ' is-closing' : ''}`} role="menu">
       {kinds.map((k) => {
         const l = lists[k];
         return (

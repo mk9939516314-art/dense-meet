@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { BadgeCheck, Camera, Check, Hand, Lock, Mic, MicOff, Settings2, ShieldCheck, UserCheck, UserX, Video, VideoOff, VolumeX, X } from 'lucide-react';
 import { PERMS } from '@/lib/perms';
 import type { PInfo, RoomState } from '@/lib/types';
 import { cx, hashHue, initials } from '@/lib/util';
+import { usePresence } from '@/lib/usePresence';
 
 type Props = {
   participants: PInfo[];
@@ -27,6 +28,10 @@ export function Avatar({ p, size }: { p: Pick<PInfo, 'name' | 'hue' | 'pic'>; si
 export default function PeoplePanel({ participants, waiting, roomState, isHost, can, onAct, onAsk }: Props) {
   const [confirm, setConfirm] = useState<string | null>(null);
   const [roleFor, setRoleFor] = useState<PInfo | null>(null);
+  const lastRole = useRef<PInfo | null>(null);
+  if (roleFor) lastRole.current = roleFor;
+  const rolePres = usePresence(roleFor !== null, 170);
+  const roleShown = rolePres.mounted ? (roleFor ?? lastRole.current) : null;
   const [label, setLabel] = useState('');
   const [perms, setPerms] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -207,11 +212,11 @@ export default function PeoplePanel({ participants, waiting, roomState, isHost, 
         </ul>
       </div>
 
-      {roleFor && (
-        <div className="modal-back" onPointerDown={(e) => e.target === e.currentTarget && setRoleFor(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label={`Role for ${roleFor.name}`}>
+      {roleShown && (
+        <div className={cx('modal-back', rolePres.closing && 'is-closing')} onPointerDown={(e) => e.target === e.currentTarget && setRoleFor(null)}>
+          <div className={cx('modal', rolePres.closing && 'is-closing')} role="dialog" aria-modal="true" aria-label={`Role for ${roleShown.name}`}>
             <div className="modal-head">
-              <h2>Role for {roleFor.name}</h2>
+              <h2>Role for {roleShown.name}</h2>
               <button className="btn-icon" type="button" onClick={() => setRoleFor(null)} aria-label="Close">
                 <X />
               </button>
@@ -235,7 +240,7 @@ export default function PeoplePanel({ participants, waiting, roomState, isHost, 
             </div>
             <p className="muted tiny">Only the permissions you switch on are given. You can change or remove this any time.</p>
             <div className="row-gap end">
-              {(roleFor.label || roleFor.perms.length > 0) && (
+              {(roleShown.label || roleShown.perms.length > 0) && (
                 <button className="btn-ghost" type="button" onClick={clearRole} disabled={saving}>
                   Remove role
                 </button>

@@ -7,6 +7,7 @@ import { useTranscription } from '@/hooks/useTranscription';
 import { useRecorder } from '@/hooks/useRecorder';
 import { loadPrefs } from '@/lib/prefs';
 import SettingsModal from '../SettingsModal';
+import { usePresence } from '@/lib/usePresence';
 import type { LayoutMode } from '@/lib/types';
 import { cx, mmss } from '@/lib/util';
 import Starfield from '../Starfield';
@@ -27,8 +28,14 @@ const TITLES: Record<PanelId, string> = { chat: 'Chat', people: 'People', notes:
 export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCode: string; aiConfigured: boolean | null }) {
   const [mode, setMode] = useState<LayoutMode>('star');
   const [panel, setPanel] = useState<PanelId | null>(null);
+  const lastPanel = useRef<PanelId>('chat');
+  if (panel) lastPanel.current = panel;
+  const panelPres = usePresence(panel !== null, 170);
+  const shownPanel: PanelId | null = panelPres.mounted ? (panel ?? lastPanel.current) : null;
+  const panelOut = panelPres.closing;
   const [pinned, setPinned] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const endPres = usePresence(confirmEnd, 170);
   const [captionsOn, setCaptionsOn] = useState(true);
   const [myNotes, setMyNotes] = useState(true);
   const [lang, setLang] = useState('en-IN');
@@ -283,19 +290,19 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
           )}
         </div>
 
-        {panel && (
+        {shownPanel && (
           <>
-            <div className="sheet-back" onClick={() => setPanel(null)} />
-            <aside className="side" aria-label={TITLES[panel]}>
+            <div className={cx('sheet-back', panelOut && 'is-closing')} onClick={() => setPanel(null)} />
+            <aside className={cx('side', panelOut && 'is-closing')} aria-label={TITLES[shownPanel]}>
               <header className="side-head">
-                <h2>{TITLES[panel]}</h2>
+                <h2>{TITLES[shownPanel]}</h2>
                 <button className="btn-icon" type="button" onClick={() => setPanel(null)} aria-label="Close panel">
                   <X />
                 </button>
               </header>
               <div className="side-body">
-                {panel === 'chat' && <ChatPanel chat={m.chat} onSend={m.sendChat} />}
-                {panel === 'people' && (
+                {shownPanel === 'chat' && <ChatPanel chat={m.chat} onSend={m.sendChat} />}
+                {shownPanel === 'people' && (
                   <PeoplePanel
                     participants={m.participants}
                     waiting={m.waiting}
@@ -306,7 +313,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
                     onAsk={m.askMedia}
                   />
                 )}
-                {panel === 'notes' && m.can('notes') && (
+                {shownPanel === 'notes' && m.can('notes') && (
                   <NotesPanel
                     isHost={m.can('notes')}
                     interview={m.roomState.interview}
@@ -327,7 +334,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
                     interim={interim}
                   />
                 )}
-                {panel === 'interview' && m.can('interview') && (
+                {shownPanel === 'interview' && m.can('interview') && (
                   <InterviewPanel
                     participants={m.participants}
                     token={m.token}
@@ -341,7 +348,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
                     onNote={m.addQuestionNote}
                   />
                 )}
-                {panel === 'helper' && <HelperPanel token={m.token} configured={aiConfigured} />}
+                {shownPanel === 'helper' && <HelperPanel token={m.token} configured={aiConfigured} />}
               </div>
             </aside>
           </>
@@ -391,9 +398,9 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
 
       {moreSettings && <SettingsModal inMeeting start="recording" onClose={() => setMoreSettings(false)} />}
 
-      {confirmEnd && (
-        <div className="modal-back" onPointerDown={(e) => e.target === e.currentTarget && setConfirmEnd(false)}>
-          <div className="modal" role="alertdialog" aria-modal="true" aria-label="End meeting for everyone">
+      {endPres.mounted && (
+        <div className={cx('modal-back', endPres.closing && 'is-closing')} onPointerDown={(e) => e.target === e.currentTarget && setConfirmEnd(false)}>
+          <div className={cx('modal', endPres.closing && 'is-closing')} role="alertdialog" aria-modal="true" aria-label="End meeting for everyone">
             <h2>End meeting for everyone?</h2>
             <p className="muted">
               Everyone will be disconnected{hosts.length ? '' : ''}. Chat and the transcript are not saved. Download the notes first if you need them.

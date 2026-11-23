@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Camera, FolderOpen, HardDrive, SlidersHorizontal, User, Video, X } from 'lucide-react';
 import { clientId, driveLinked, driveToken, driveUnlink, setClientId } from '@/lib/drive';
 import { folderName, folderSupported, forgetFolder, pickFolder } from '@/lib/localfolder';
@@ -11,7 +11,7 @@ import { cx, hashHue, initials } from '@/lib/util';
 type Tab = 'profile' | 'meetings' | 'recording';
 
 /** Everything a person can set once: profile, meeting defaults and where recordings go. Saved on this device. */
-export default function SettingsModal({ onClose, start = 'profile', inMeeting = false }: { onClose: () => void; start?: Tab; inMeeting?: boolean }) {
+export default function SettingsModal({ onClose: onDone, start = 'profile', inMeeting = false }: { onClose: () => void; start?: Tab; inMeeting?: boolean }) {
   const [tab, setTab] = useState<Tab>(start);
   const [name, setName] = useState('');
   const [hue, setHue] = useState<number | null>(null);
@@ -19,6 +19,11 @@ export default function SettingsModal({ onClose, start = 'profile', inMeeting = 
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs());
   const [linked, setLinked] = useState(false);
   const [gcid, setGcid] = useState('');
+  const [leaving, setLeaving] = useState(false);
+  const onClose = useCallback(() => {
+    setLeaving(true);
+    setTimeout(onDone, 170);
+  }, [onDone]);
   const [folder, setFolder] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const mobile = typeof window !== 'undefined' && isMobile();
@@ -64,8 +69,8 @@ export default function SettingsModal({ onClose, start = 'profile', inMeeting = 
   const shownHue = hue ?? hashHue(name || 'guest');
 
   return (
-    <div className="modal-back" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+    <div className={`modal-back${leaving ? ' is-closing' : ''}`} onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`modal settings-modal${leaving ? ' is-closing' : ''}`} role="dialog" aria-modal="true" aria-label="Settings">
         <header className="modal-head">
           <h2>Settings</h2>
           <button className="btn-icon" type="button" onClick={onClose} aria-label="Close">

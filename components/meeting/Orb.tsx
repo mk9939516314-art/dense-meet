@@ -24,7 +24,6 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
     height: Math.round(box.h),
     '--s': `${Math.round(size)}px`,
     '--h': hue,
-    '--lvl': p.speaking ? Math.min(1, p.level * 1.6).toFixed(2) : 0,
   } as CSSProperties;
   const seed = hashHue(p.identity + 'x') + (p.identity.charCodeAt(0) || 0);
   const amp = box.shape === 'tile' ? 0 : Math.max(4, Math.min(16, size * 0.07));
@@ -51,6 +50,7 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
         pinned && 'is-pinned',
       )}
       style={style}
+      data-pid={p.identity}
       role="button"
       tabIndex={0}
       aria-label={label}

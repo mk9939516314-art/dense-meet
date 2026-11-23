@@ -464,11 +464,103 @@ export function useMeeting() {
     [ask, bump],
   );
 
+  // Instant speaking detection: measure each voice in the browser every frame instead of waiting for the server's speaker updates.
+  const voice = useRef(new Map<string, { level: number; speaking: boolean; loud: number; live: boolean }>());
+  useEffect(() => {
+    if (phase !== 'live') return;
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const nodes = new Map<string, { tid: string; src: MediaStreamAudioSourceNode; an: AnalyserNode; buf: Uint8Array }>();
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const r = roomRef.current;
+      if (!r) return;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const now = performance.now();
+      let changed = false;
+      const all = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
+      const alive = new Set(all.map((p) => p.identity));
+      nodes.forEach((n, id) => {
+        if (!alive.has(id)) {
+          n.src.disconnect();
+          nodes.delete(id);
+          voice.current.delete(id);
+        }
+      });
+      all.forEach((p) => {
+        const pub = p.getTrackPublication(Track.Source.Microphone);
+        const mt = pub?.track?.mediaStreamTrack;
+        let n = nodes.get(p.identity);
+        if (n && (!mt || n.tid !== mt.id)) {
+          n.src.disconnect();
+          nodes.delete(p.identity);
+          n = undefined;
+        }
+        if (!n && mt && mt.readyState === 'live') {
+          try {
+            const src = ctx.createMediaStreamSource(new MediaStream([mt]));
+            const an = ctx.createAnalyser();
+            an.fftSize = 512;
+            src.connect(an);
+            n = { tid: mt.id, src, an, buf: new Uint8Array(an.fftSize) };
+            nodes.set(p.identity, n);
+          } catch {
+            /* fall back to the server's value */
+          }
+        }
+        let v = voice.current.get(p.identity);
+        if (!v) {
+          v = { level: 0, speaking: false, loud: 0, live: false };
+          voice.current.set(p.identity, v);
+        }
+        v.live = Boolean(n);
+        let rms = 0;
+        if (n && pub && !pub.isMuted) {
+          n.an.getByteTimeDomainData(n.buf as unknown as Uint8Array<ArrayBuffer>);
+          let sum = 0;
+          for (let i = 0; i < n.buf.length; i++) {
+            const x = (n.buf[i] - 128) / 128;
+            sum += x * x;
+          }
+          rms = Math.sqrt(sum / n.buf.length);
+        }
+        if (rms > 0.018) {
+          v.loud = now;
+          if (!v.speaking) {
+            v.speaking = true;
+            changed = true;
+          }
+        } else if (v.speaking && now - v.loud > 320) {
+          v.speaking = false;
+          changed = true;
+        }
+        v.level = Math.min(1, rms * 5);
+        const el = document.querySelector<HTMLElement>(`[data-pid="${CSS.escape(p.identity)}"]`);
+        if (el) el.style.setProperty('--lvl', v.speaking ? v.level.toFixed(2) : '0');
+      });
+      if (changed) setTick((t) => t + 1);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      nodes.forEach((n) => n.src.disconnect());
+      voice.current.clear();
+      ctx.close().catch(() => {});
+    };
+  }, [phase]);
+
   const participants = useMemo<PInfo[]>(() => {
     const r = roomRef.current;
     if (!r) return [];
     return [r.localParticipant, ...Array.from(r.remoteParticipants.values())].map((p) => {
       const x = snap(p);
+      const v = voice.current.get(x.identity);
+      if (v && v.live) {
+        x.speaking = v.speaking;
+        x.level = v.level;
+      }
       if (x.isLocal) return { ...x, micOn: opt.mic ?? x.micOn, camOn: opt.cam ?? x.camOn };
       return x;
     });
