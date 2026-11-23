@@ -1,9 +1,11 @@
-import { TrackSource } from 'livekit-server-sdk';
 import { authMember, callerMeta, can, getRoomMeta, roomSvc } from '@/lib/server/auth';
 import { PERM_IDS, parseMeta, type PMeta } from '@/lib/perms';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// LiveKit track sources: 1 = camera, 2 = microphone.
+const TrackSource = { CAMERA: 1, MICROPHONE: 2 } as const;
 
 type Action = 'mute' | 'muteAll' | 'remove' | 'end' | 'admit' | 'deny' | 'roomSet' | 'setRole';
 type Body = {
