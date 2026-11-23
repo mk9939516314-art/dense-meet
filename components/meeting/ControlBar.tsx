@@ -23,11 +23,12 @@ import {
   PowerOff,
   Circle,
   Square,
+  ClipboardList,
 } from 'lucide-react';
 import type { LayoutMode, PInfo } from '@/lib/types';
 import { cx } from '@/lib/util';
 
-export type PanelId = 'chat' | 'people' | 'notes' | 'helper';
+export type PanelId = 'chat' | 'people' | 'notes' | 'helper' | 'interview';
 
 type Props = {
   me?: PInfo;
@@ -37,6 +38,7 @@ type Props = {
   sharing: boolean;
   isHost: boolean;
   canNotes: boolean;
+  canInterview: boolean;
   waitingCount: number;
   notesOn: boolean;
   panel: PanelId | null;
@@ -55,6 +57,9 @@ type Props = {
   onMode: (m: LayoutMode) => void;
   onCaptions: () => void;
   onSettings: () => void;
+  layoutAll: boolean;
+  onLayoutAll: () => void;
+  canLayoutAll: boolean;
   canRecord: boolean;
   recording: boolean;
   onRecord: () => void;
@@ -90,6 +95,7 @@ export default function ControlBar(p: Props) {
   const panels: { id: PanelId; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'people', label: 'People', icon: <Users />, badge: p.waitingCount || p.peopleCount },
     { id: 'chat', label: 'Chat', icon: <MessageSquare />, badge: p.unread },
+    ...(p.canInterview ? [{ id: 'interview' as PanelId, label: 'Interview', icon: <ClipboardList /> }] : []),
     ...(p.canNotes ? [{ id: 'notes' as PanelId, label: 'AI notes', icon: <FileText /> }] : []),
     { id: 'helper', label: 'AI Helper', icon: <Sparkles /> },
   ];
@@ -157,6 +163,12 @@ export default function ControlBar(p: Props) {
                   </button>
                 ))}
               </div>
+              {p.canLayoutAll && (
+                <label className="menu-item check">
+                  <input type="checkbox" checked={p.layoutAll} onChange={p.onLayoutAll} />
+                  <span>Apply layout to everyone</span>
+                </label>
+              )}
               <button type="button" role="menuitem" className="menu-item" onClick={() => { p.onCaptions(); setOpen(null); }}>
                 <Captions /> {p.captionsOn ? 'Hide captions' : 'Show captions'}
               </button>

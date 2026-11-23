@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Camera, Hourglass, Mic, Sparkles, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ChevronUp, MessageSquare, Users, Camera, Hourglass, Mic, Sparkles, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
 import type { useMeeting } from '@/hooks/useMeeting';
 import { useTranscription } from '@/hooks/useTranscription';
 import { useRecorder } from '@/hooks/useRecorder';
+import { loadPrefs } from '@/lib/prefs';
+import SettingsModal from '../SettingsModal';
 import type { LayoutMode } from '@/lib/types';
 import { cx, mmss } from '@/lib/util';
 import Starfield from '../Starfield';
@@ -15,11 +17,13 @@ import { AudioPlayer } from './media';
 import ChatPanel from './panels/ChatPanel';
 import HelperPanel from './panels/HelperPanel';
 import NotesPanel from './panels/NotesPanel';
-import PeoplePanel from './panels/PeoplePanel';
+import InterviewPanel from './panels/InterviewPanel';
+import QuestionCard from './QuestionCard';
+import PeoplePanel, { Avatar } from './panels/PeoplePanel';
 
 type Meeting = ReturnType<typeof useMeeting>;
 
-const TITLES: Record<PanelId, string> = { chat: 'Chat', people: 'People', notes: 'AI notes', helper: 'AI Helper' };
+const TITLES: Record<PanelId, string> = { chat: 'Chat', people: 'People', notes: 'AI notes', helper: 'AI Helper', interview: 'Interview' };
 
 export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCode: string; aiConfigured: boolean | null }) {
   const [mode, setMode] = useState<LayoutMode>('star');
@@ -34,8 +38,15 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
   const [seen, setSeen] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [toast, setToast] = useState<string | null>(null);
+  const [layoutAll, setLayoutAll] = useState(false);
+  const [immersive, setImmersive] = useState(false);
+  const handsRef = useRef<Set<string>>(new Set());
 
+  const audioRef = useRef(m.audioTracks);
+  audioRef.current = m.audioTracks;
+  const [moreSettings, setMoreSettings] = useState(false);
   const rec = useRecorder(m.setRecording);
+  useEffect(() => setMode(loadPrefs().layout), []);
   const canShare = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices);
 
   useEffect(() => {
@@ -64,6 +75,39 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
   useEffect(() => {
     if (panel === 'chat') setSeen(m.chat.filter((c) => !c.mine).length);
   }, [panel, m.chat]);
+
+  // Someone changed the layout for everyone: follow it once, and the person stays free to change it again.
+  useEffect(() => {
+    if (m.layoutPush && !m.isHost) {
+      setMode(m.layoutPush.mode as LayoutMode);
+      setToast(`${m.layoutPush.from} switched everyone to ${m.layoutPush.mode} view`);
+      const id = setTimeout(() => setToast(null), 3500);
+      return () => clearTimeout(id);
+    }
+  }, [m.layoutPush, m.isHost]);
+
+  const changeMode = useCallback(
+    (next: LayoutMode) => {
+      setMode(next);
+      if (layoutAll && m.can('interview')) m.sendLayout(next);
+    },
+    [layoutAll, m],
+  );
+
+  // A raised hand gets its own short, friendly alert for the host and role holders.
+  useEffect(() => {
+    const now = new Set(m.participants.filter((p) => p.hand).map((p) => p.identity));
+    if (m.can('mute')) {
+      m.participants.forEach((p) => {
+        if (p.hand && !handsRef.current.has(p.identity) && !p.isLocal) {
+          setToast(`${p.name} raised a hand`);
+          setTimeout(() => setToast((t) => (t === `${p.name} raised a hand` ? null : t)), 4000);
+        }
+      });
+    }
+    handsRef.current = now;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m.participants]);
 
   const togglePanel = useCallback((id: PanelId) => setPanel((cur) => (cur === id ? null : id)), []);
 
@@ -105,6 +149,14 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
             <span className="ended-icon pulse"><Hourglass /></span>
             <h1>Waiting for the host</h1>
             <p className="muted">{m.me?.blocked ? 'You were removed earlier, so the host has to let you back in.' : 'The host will let you in shortly.'} Your camera and microphone stay off until then.</p>
+            <div className="wait-list" aria-label="People waiting">
+              <b>Waiting ({m.waitingAll.length})</b>
+              <ul>
+                {m.waitingAll.map((w) => (
+                  <li key={w.identity}><Avatar p={w} /> <span>{w.name}{w.isLocal ? ' (you)' : ''}</span></li>
+                ))}
+              </ul>
+            </div>
             <button className="btn-ghost" type="button" onClick={m.leave}>Leave</button>
           </div>
         </div>
@@ -113,11 +165,32 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
   }
 
   return (
-    <div className="room">
+    <div className={`room${immersive ? ' immersive' : ''}`}>
       <Starfield />
 
       <div className="room-main">
-        <div className="stage-wrap">
+        <div
+          className="stage-wrap"
+          onClick={(e) => {
+            const t = e.target as HTMLElement;
+            if (t.classList.contains('stage') || t.classList.contains('stage-wrap')) setImmersive((v) => !v);
+          }}
+        >
+          <div className="mob-top">
+            <button type="button" className="mob-fab" onClick={() => togglePanel('people')} aria-label="People">
+              <Users />
+              {(m.can('admit') ? m.waiting.length : 0) > 0 ? <span className="count">{m.waiting.length}</span> : null}
+            </button>
+            <button type="button" className="mob-fab" onClick={() => togglePanel('chat')} aria-label="Chat">
+              <MessageSquare />
+              {unread > 0 && <span className="count">{unread}</span>}
+            </button>
+          </div>
+          {immersive && (
+            <button type="button" className="mob-reveal" onClick={() => setImmersive(false)} aria-label="Show controls">
+              <ChevronUp />
+            </button>
+          )}
           <Stage participants={m.participants} mode={mode} pinned={pinned} onPin={setPinned} reactions={m.reactions} bottomPad={20} />
 
           <div className="status-chips">
@@ -163,6 +236,13 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
               <button className="btn-icon small" type="button" onClick={m.clearMediaNote} aria-label="Dismiss">
                 <X />
               </button>
+            </div>
+          )}
+          {m.questions.length > 0 && (
+            <div className="qstack">
+              {m.questions.map((q) => (
+                <QuestionCard key={q.id} q={q} onDismiss={() => m.dismissQuestion(q.id)} />
+              ))}
             </div>
           )}
           {m.can('admit') && m.waitingToast && (
@@ -232,6 +312,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
                   <NotesPanel
                     isHost={m.can('notes')}
                     interview={m.roomState.interview}
+                    roomCode={roomCode}
                     notesOn={m.notesOn}
                     onToggleNotes={m.setNotes}
                     tx={m.tx}
@@ -246,6 +327,20 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
                     lang={lang}
                     setLang={setLang}
                     interim={interim}
+                  />
+                )}
+                {panel === 'interview' && m.can('interview') && (
+                  <InterviewPanel
+                    participants={m.participants}
+                    token={m.token}
+                    tx={m.tx}
+                    startedAt={m.startedAt}
+                    configured={aiConfigured}
+                    notesOn={m.notesOn}
+                    onToggleNotes={m.setNotes}
+                    onPush={m.pushQuestion}
+                    onClear={m.clearQuestion}
+                    onNote={m.addQuestionNote}
                   />
                 )}
                 {panel === 'helper' && <HelperPanel token={m.token} configured={aiConfigured} />}
@@ -263,6 +358,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         sharing={m.sharingScreen}
         isHost={m.isHost}
         canNotes={m.can('notes')}
+        canInterview={m.can('interview') && m.roomState.interview}
         waitingCount={m.can('admit') ? m.waiting.length : 0}
         notesOn={m.notesOn}
         panel={panel}
@@ -278,11 +374,14 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         onLeave={m.leave}
         onEnd={() => setConfirmEnd(true)}
         onPanel={togglePanel}
-        onMode={setMode}
+        onMode={changeMode}
+        layoutAll={layoutAll}
+        onLayoutAll={() => setLayoutAll((v) => !v)}
+        canLayoutAll={m.can('interview')}
         onCaptions={() => setCaptionsOn((v) => !v)}
         canRecord={m.can('record')}
         recording={rec.state === 'recording' || rec.state === 'starting'}
-        onRecord={() => (rec.state === 'recording' ? rec.stop() : rec.start(m.getMicTrack()))}
+        onRecord={() => (rec.state === 'recording' ? rec.stop() : rec.start({ code: roomCode, prefs: loadPrefs(), micTrack: m.getMicTrack(), audioTracks: () => audioRef.current }))}
         onSettings={() => setSettings(true)}
         onCopyLink={copyLink}
       />
@@ -291,7 +390,8 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         <AudioPlayer key={a.sid} track={a.track} />
       ))}
 
-      {settings && <SettingsDialog onClose={() => setSettings(false)} onSwitch={m.switchDevice} canRecord={m.can('record')} />}
+      {settings && <SettingsDialog onClose={() => setSettings(false)} onSwitch={m.switchDevice} onMore={() => { setSettings(false); setMoreSettings(true); }} />}
+      {moreSettings && <SettingsModal inMeeting start="recording" onClose={() => setMoreSettings(false)} />}
 
       {confirmEnd && (
         <div className="modal-back" onPointerDown={(e) => e.target === e.currentTarget && setConfirmEnd(false)}>

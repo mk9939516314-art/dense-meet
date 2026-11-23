@@ -6,6 +6,7 @@ export const PERMS = [
   { id: 'notes', label: 'See AI notes and summaries' },
   { id: 'copilot', label: 'Use Host Copilot' },
   { id: 'record', label: 'Start and stop recording' },
+  { id: 'interview', label: 'Run interview questions' },
 ] as const;
 
 export type PermId = (typeof PERMS)[number]['id'];

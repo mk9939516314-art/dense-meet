@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  Settings,
   BadgeCheck,
   Bot,
   Check,
-  Crown,
   History,
   Hourglass,
   Lightbulb,
@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { readHistory, type HistoryItem } from '@/lib/profile';
+import SettingsModal from './SettingsModal';
 import Starfield from './Starfield';
 
 const CODE_RE = /[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
@@ -106,7 +107,6 @@ function Demo() {
             style={{ left: `${x}%`, top: `${y}%`, width: `${s}%`, ['--h' as string]: o.h, ['--d' as string]: `${6 + (i % 4)}s`, animationDelay: `${-i * 1.3}s` } as React.CSSProperties}
           >
             <span>{o.n.slice(0, 2).toUpperCase()}</span>
-            {o.host && <Crown fill="currentColor" />}
             <em>{o.n}</em>
           </div>
         );
@@ -121,6 +121,7 @@ export default function Landing() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [settings, setSettings] = useState(false);
   const [live, setLive] = useState<Record<string, boolean>>({});
   useReveal();
 
@@ -179,10 +180,16 @@ export default function Landing() {
           <a href="#interviews">Interviews</a>
           <a href="#control">Control</a>
           <a href="#more">More</a>
+          <Link href="/history">History</Link>
         </nav>
-        <button className="btn-ghost small" type="button" onClick={create} disabled={creating}>
-          {creating ? <Loader2 className="spin" /> : <Video />} New meeting
-        </button>
+        <div className="row-gap">
+          <button className="btn-icon" type="button" onClick={() => setSettings(true)} aria-label="Settings" title="Settings">
+            <Settings />
+          </button>
+          <button className="btn-ghost small" type="button" onClick={create} disabled={creating}>
+            {creating ? <Loader2 className="spin" /> : <Video />} New meeting
+          </button>
+        </div>
       </header>
 
       <main>
@@ -306,7 +313,7 @@ export default function Landing() {
             </ul>
           </div>
           <div className="role-demo" data-reveal aria-hidden="true">
-            <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 28 } as React.CSSProperties}>AA</span><b>Aarav</b><span className="tag gold"><Crown /> Host</span></div>
+            <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 28 } as React.CSSProperties}>AA</span><b>Aarav</b><span className="tag host-tag">Host</span></div>
             <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 172 } as React.CSSProperties}>ZO</span><b>Zoya</b><span className="tag role"><BadgeCheck /> Helper</span><Mic /></div>
             <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 12 } as React.CSSProperties}>RO</span><b>Rohan</b><span className="tag warn"><Hourglass /> Waiting</span><span className="btn-primary small">Let in</span><X /></div>
             <div className="ask-mini"><Mic /> <span>Aarav asks you to turn on your microphone</span><span className="btn-primary small">Turn on</span></div>
@@ -355,6 +362,7 @@ export default function Landing() {
         </section>
       </main>
 
+      {settings && <SettingsModal onClose={() => setSettings(false)} />}
       <footer className="footer">
         <div className="footer-brand">
           <a className="logo" href="/"><span className="logo-mark" /> Dense Meet</a>
@@ -370,6 +378,7 @@ export default function Landing() {
           <b>Company</b>
           <a href="https://dense-ai.vercel.app" target="_blank" rel="noreferrer">Dense AI</a>
           <a href="#how">How it works</a>
+          <Link href="/history">History</Link>
         </nav>
         <div className="footer-bottom">© {new Date().getFullYear()} Dense AI. All rights reserved.</div>
       </footer>

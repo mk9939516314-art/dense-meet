@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BadgeCheck, Camera, Check, Crown, Hand, Lock, Mic, MicOff, Settings2, ShieldCheck, UserCheck, UserX, Video, VideoOff, VolumeX, X } from 'lucide-react';
+import { BadgeCheck, Camera, Check, Hand, Lock, Mic, MicOff, Settings2, ShieldCheck, UserCheck, UserX, Video, VideoOff, VolumeX, X } from 'lucide-react';
 import { PERMS } from '@/lib/perms';
 import type { PInfo, RoomState } from '@/lib/types';
 import { cx, hashHue, initials } from '@/lib/util';
@@ -33,6 +33,7 @@ export default function PeoplePanel({ participants, waiting, roomState, isHost, 
 
   const sorted = [...participants].sort((a, b) => {
     if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+    if (a.hand !== b.hand) return a.hand ? -1 : 1;
     if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
@@ -68,7 +69,14 @@ export default function PeoplePanel({ participants, waiting, roomState, isHost, 
               <h3>
                 <UserCheck /> Waiting to join
               </h3>
-              <span className="count">{waiting.length}</span>
+              <span className="row-gap">
+                <span className="count">{waiting.length}</span>
+                {waiting.length > 1 && (
+                  <button className="btn-primary small" type="button" onClick={() => onAct('admitAll')}>
+                    <Check /> Admit all
+                  </button>
+                )}
+              </span>
             </header>
             <ul className="people-list">
               {waiting.map((p) => (
@@ -127,15 +135,13 @@ export default function PeoplePanel({ participants, waiting, roomState, isHost, 
 
         <ul className="people-list">
           {sorted.map((p) => (
-            <li key={p.identity} className="person">
+            <li key={p.identity} className={cx('person', p.hand && 'is-hand')}>
               <Avatar p={p} />
               <span className="person-name">
                 {p.name}
                 {p.isLocal && <span className="muted"> (You)</span>}
                 {p.isHost && (
-                  <span className="tag gold">
-                    <Crown /> Host
-                  </span>
+                  <span className="tag host-tag">Host</span>
                 )}
                 {!p.isHost && p.label && (
                   <span className="tag role">

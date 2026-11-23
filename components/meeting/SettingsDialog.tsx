@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Room } from 'livekit-client';
 import { HardDrive, X } from 'lucide-react';
-import { clientId, driveLinked, driveToken, driveUnlink } from '@/lib/drive';
 
 type Dev = { id: string; label: string };
 
@@ -16,19 +15,7 @@ async function list(kind: MediaDeviceKind): Promise<Dev[]> {
   }
 }
 
-export default function SettingsDialog({ onClose, onSwitch, canRecord }: { onClose: () => void; onSwitch: (kind: MediaDeviceKind, id: string) => void; canRecord?: boolean }) {
-  const [linked, setLinked] = useState(false);
-  const [driveErr, setDriveErr] = useState('');
-  useEffect(() => setLinked(driveLinked()), []);
-  const connect = async () => {
-    setDriveErr('');
-    try {
-      await driveToken(true);
-      setLinked(true);
-    } catch (e) {
-      setDriveErr((e as Error).message);
-    }
-  };
+export default function SettingsDialog({ onClose, onSwitch, onMore }: { onClose: () => void; onSwitch: (kind: MediaDeviceKind, id: string) => void; onMore: () => void }) {
   const [mics, setMics] = useState<Dev[]>([]);
   const [cams, setCams] = useState<Dev[]>([]);
   const [spk, setSpk] = useState<Dev[]>([]);
@@ -73,30 +60,9 @@ export default function SettingsDialog({ onClose, onSwitch, canRecord }: { onClo
         {renderSelect('Microphone', mics, 'audioinput')}
         {renderSelect('Camera', cams, 'videoinput')}
         {renderSelect('Speaker', spk, 'audiooutput')}
-        {canRecord && (
-          <div className="card">
-            <header className="card-head">
-              <h3><HardDrive /> Recording storage</h3>
-              <span className={linked ? 'status-pill on' : 'status-pill'}>{linked ? 'Google Drive' : 'This device'}</span>
-            </header>
-            {clientId() ? (
-              linked ? (
-                <>
-                  <p className="muted tiny">Recordings upload to a folder named Dense Meet Recordings in your Google Drive while you record.</p>
-                  <button className="btn-ghost small" type="button" onClick={() => { driveUnlink(); setLinked(false); }}>Use this device instead</button>
-                </>
-              ) : (
-                <>
-                  <p className="muted tiny">Link your Google Drive and every recording goes there by default.</p>
-                  <button className="btn-primary small" type="button" onClick={connect}>Link Google Drive</button>
-                </>
-              )
-            ) : (
-              <p className="muted tiny">Google Drive is not set up on this site yet. Recordings download to this device.</p>
-            )}
-            {driveErr && <div className="notice warn">{driveErr}</div>}
-          </div>
-        )}
+        <button className="btn-ghost" type="button" onClick={onMore}>
+          <HardDrive /> Profile, recording and more
+        </button>
         <p className="muted tiny">Noise suppression, echo cancellation and automatic volume are always on. Speaker choice is not supported on iPhone and iPad.</p>
       </div>
     </div>

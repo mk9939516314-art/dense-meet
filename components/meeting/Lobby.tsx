@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Camera, Loader2, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { loadPrefs } from '@/lib/prefs';
 import { HUES, fileToAvatar, loadProfile, saveProfile } from '@/lib/profile';
 import { cx, hashHue, initials } from '@/lib/util';
 
@@ -34,6 +35,9 @@ export default function Lobby({ roomCode, isHost, busy, error, onJoin }: Props) 
   const [pic, setPic] = useState('');
 
   useEffect(() => {
+    const pf = loadPrefs();
+    setMicOn(pf.defaultMic);
+    setCamOn(pf.defaultCam);
     const pr = loadProfile();
     setName(pr.name);
     setHueSel(pr.hue);

@@ -8,6 +8,7 @@ import { uid } from '@/lib/util';
 
 export type Phase = 'idle' | 'connecting' | 'live' | 'ended';
 export type EndReason = 'left' | 'removed' | 'ended' | 'error' | 'locked';
+export type Question = { id: string; text: string; secs: number; at: number; from: string };
 export type MediaAsk = { kind: 'mic' | 'cam'; from: string; id: string };
 
 export type JoinParams = {
@@ -76,6 +77,9 @@ export function useMeeting() {
   const [roomState, setRoomState] = useState<RoomState>(NO_ROOM);
   const [ask, setAsk] = useState<MediaAsk | null>(null);
   const [recording, setRecordingState] = useState(false);
+  const [opt, setOpt] = useState<{ mic?: boolean; cam?: boolean }>({});
+  const [layoutPush, setLayoutPush] = useState<{ mode: string; from: string; ts: number } | null>(null);
+  const [question, setQuestions] = useState<Question[]>([]);
   const [waitingToast, setWaitingToast] = useState<string | null>(null);
 
   const bump = useCallback(() => {
@@ -192,6 +196,17 @@ export function useMeeting() {
           setTx((l) => [...l.slice(-1500), { id: String(m.id || uid()), identity: info.identity, speaker: info.name, text, ts: Number(m.ts) || Date.now() }]);
         } else if (topic === 'notes') {
           if (info.isHost || info.perms.includes('notes')) setNotesOnState(Boolean(m.on));
+        } else if (topic === 'layout') {
+          if ((info.isHost || info.perms.includes('interview')) && ['star', 'grid', 'speaker'].includes(String(m.mode))) setLayoutPush({ mode: String(m.mode), from: info.name, ts: Date.now() });
+        } else if (topic === 'q') {
+          // Interview questions: only a host (or someone with the interview permission) can send them, and only to chosen people.
+          if (info.isHost || info.perms.includes('interview')) {
+            if (m.op === 'clear') setQuestions((l) => l.filter((x) => x.id !== String(m.id)));
+            else if (m.op === 'push') {
+              const text = String(m.text || '').slice(0, 600);
+              if (text) setQuestions((l) => [...l.filter((x) => x.id !== String(m.id)), { id: String(m.id || uid()), text, secs: Math.max(0, Math.min(3600, Number(m.secs) || 0)), at: Date.now(), from: info.name }]);
+            }
+          }
         } else if (topic === 'rec') {
           if (info.isHost || info.perms.includes('record')) setRecordingState(Boolean(m.on));
         } else if (topic === 'kick') {
@@ -284,11 +299,14 @@ export function useMeeting() {
       wantRef.current.mic = !wantRef.current.mic;
       return;
     }
+    const want = !lp.isMicrophoneEnabled;
+    setOpt((o) => ({ ...o, mic: want }));
     try {
-      await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled);
+      await lp.setMicrophoneEnabled(want);
     } catch {
       setMediaNote('Microphone is blocked. Allow it in your browser to speak.');
     }
+    setOpt((o) => ({ ...o, mic: undefined }));
     bump();
   }, [bump]);
 
@@ -299,11 +317,14 @@ export function useMeeting() {
       wantRef.current.cam = !wantRef.current.cam;
       return;
     }
+    const want = !lp.isCameraEnabled;
+    setOpt((o) => ({ ...o, cam: want }));
     try {
-      await lp.setCameraEnabled(!lp.isCameraEnabled);
+      await lp.setCameraEnabled(want);
     } catch {
       setMediaNote('Camera is blocked. Allow it in your browser to share video.');
     }
+    setOpt((o) => ({ ...o, cam: undefined }));
     bump();
   }, [bump]);
 
@@ -376,6 +397,14 @@ export function useMeeting() {
 
   const getMicTrack = useCallback(() => roomRef.current?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack ?? null, []);
 
+  /** Adds a line to the host's own transcript so the AI knows which question was asked to whom. */
+  const addQuestionNote = useCallback((text: string, names: string) => {
+    const r = roomRef.current;
+    if (!r) return;
+    const host = r.localParticipant.name || 'Interviewer';
+    setTx((l) => [...l.slice(-1500), { id: uid(), identity: r.localParticipant.identity, speaker: `${host} (question to ${names})`, text: text.slice(0, 600), ts: Date.now() }]);
+  }, []);
+
   const setNotes = useCallback(
     (on: boolean) => {
       setNotesOnState(on);
@@ -438,9 +467,13 @@ export function useMeeting() {
   const participants = useMemo<PInfo[]>(() => {
     const r = roomRef.current;
     if (!r) return [];
-    return [r.localParticipant, ...Array.from(r.remoteParticipants.values())].map(snap);
+    return [r.localParticipant, ...Array.from(r.remoteParticipants.values())].map((p) => {
+      const x = snap(p);
+      if (x.isLocal) return { ...x, micOn: opt.mic ?? x.micOn, camOn: opt.cam ?? x.camOn };
+      return x;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, phase]);
+  }, [tick, phase, opt]);
 
   const audioTracks = useMemo<AudioTrackRef[]>(() => {
     const r = roomRef.current;
@@ -475,6 +508,7 @@ export function useMeeting() {
   // Only people who are in the meeting appear on stage; waiting people are listed for the host.
   const inRoom = useMemo(() => participants.filter((p) => p.status === 'in' || p.isLocal), [participants]);
   const waiting = useMemo(() => participants.filter((p) => p.status === 'waiting' && !p.isLocal), [participants]);
+  const waitingAll = useMemo(() => participants.filter((p) => p.status === 'waiting'), [participants]);
 
   const waitingKey = waiting.map((w) => w.identity).join(',');
   useEffect(() => {
@@ -494,7 +528,14 @@ export function useMeeting() {
     clearMediaNote: () => setMediaNote(null),
     participants: inRoom,
     waiting,
+    waitingAll,
     roomState,
+    layoutPush,
+    questions: question,
+    sendLayout: (mode: string) => send('layout', { mode }),
+    pushQuestion: (q: { id: string; text: string; secs: number }, to?: string[]) => send('q', { op: 'push', ...q }, to && to.length ? to : undefined),
+    clearQuestion: (id: string, to?: string[]) => send('q', { op: 'clear', id }, to && to.length ? to : undefined),
+    dismissQuestion: (id: string) => setQuestions((l) => l.filter((x) => x.id !== id)),
     ask,
     answerAsk,
     askMedia,
@@ -510,6 +551,7 @@ export function useMeeting() {
     tx,
     reactions,
     notesOn,
+    addQuestionNote,
     recording,
     setRecording,
     getMicTrack,

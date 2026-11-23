@@ -1,5 +1,9 @@
 export type ChatMsg = { role: 'system' | 'user' | 'assistant'; content: string };
 
+// A model that the provider said is retired is replaced by one that works; remembered until the server restarts.
+let resolved = '';
+let resolvedFrom = '';
+
 const clean = (v?: string) => (v || '').trim().replace(/^["']|["']$/g, '');
 
 /** Provider-agnostic: any OpenAI-compatible chat completions API (Gemini, Groq, OpenAI, OpenRouter...). */
@@ -8,8 +12,11 @@ export function aiConfig() {
   let base = clean(process.env.AI_BASE_URL) || 'https://generativelanguage.googleapis.com/v1beta/openai';
   base = base.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
   const isGemini = base.includes('generativelanguage.googleapis.com');
-  let model = clean(process.env.AI_MODEL) || (isGemini ? 'gemini-2.5-flash' : '');
+  let model = clean(process.env.AI_MODEL) || (isGemini ? 'gemini-flash-latest' : '');
+  if (resolved && clean(process.env.AI_MODEL) === resolvedFrom) model = resolved;
   if (isGemini) model = model.replace(/^models\//, '');
+  // Retired Gemini generations are mapped to the always-current alias before any call is wasted on them.
+  if (isGemini && /^gemini-(1\.|2\.0|pro$)/.test(model)) model = 'gemini-flash-latest';
   return { key, model, base, isGemini, ok: Boolean(key && model) };
 }
 
@@ -24,7 +31,7 @@ async function call(messages: ChatMsg[], opts: { json: boolean; temperature: num
   const body: Record<string, unknown> = { model: cfg.model, messages, temperature: opts.temperature, max_tokens: opts.maxTokens };
   // level 0: all options. level 1: no JSON mode / no reasoning switch. level 2: bare minimum.
   if (level === 0 && opts.json) body.response_format = { type: 'json_object' };
-  if (level === 0 && cfg.isGemini && /2\.5|3/.test(cfg.model)) body.reasoning_effort = 'low';
+  if (level === 0 && cfg.isGemini && /2\.5|3|latest/.test(cfg.model)) body.reasoning_effort = 'low';
   if (level === 2) {
     delete body.max_tokens;
     delete body.temperature;
@@ -54,7 +61,53 @@ async function errorDetail(res: Response) {
   }
 }
 
+async function pickModel(failed: string, hint: string): Promise<string[]> {
+  const cfg = aiConfig();
+  const out: string[] = [];
+  const m = hint.match(/models\/([\w.\-]+)/g);
+  (m || []).forEach((x) => {
+    const id = x.replace('models/', '');
+    if (id !== failed) out.push(id);
+  });
+  if (cfg.isGemini) out.push('gemini-flash-latest', 'gemini-2.5-flash');
+  try {
+    const res = await fetch(`${cfg.base}/models`, { headers: { Authorization: `Bearer ${cfg.key}`, 'x-goog-api-key': cfg.key } });
+    if (res.ok) {
+      const j = (await res.json()) as { data?: { id: string }[] };
+      const ids = (j.data || []).map((d) => d.id.replace(/^models\//, '')).filter((id) => /flash/i.test(id) && !/lite|image|tts|live|audio|embed|thinking|exp/i.test(id));
+      ids.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+      out.push(...ids.slice(0, 4));
+    }
+  } catch {
+    /* listing is best effort */
+  }
+  return Array.from(new Set(out)).filter((x) => x !== failed);
+}
+
 export async function chat(
+  messages: ChatMsg[],
+  opts: { json?: boolean; temperature?: number; maxTokens?: number } = {},
+): Promise<string> {
+  try {
+    return await chatOnce(messages, opts);
+  } catch (e) {
+    if (!(e instanceof AiError) || ![400, 404].includes(e.status) || !/no longer|not found|not supported|deprecat|unavailable/i.test(e.detail)) throw e;
+    const failed = aiConfig().model;
+    for (const next of await pickModel(failed, e.detail)) {
+      try {
+        resolvedFrom = clean(process.env.AI_MODEL);
+        resolved = next;
+        return await chatOnce(messages, opts);
+      } catch (err) {
+        resolved = '';
+        if (!(err instanceof AiError) || ![400, 404].includes(err.status)) throw err;
+      }
+    }
+    throw e;
+  }
+}
+
+async function chatOnce(
   messages: ChatMsg[],
   opts: { json?: boolean; temperature?: number; maxTokens?: number } = {},
 ): Promise<string> {

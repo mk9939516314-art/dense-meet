@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 // LiveKit track sources: 1 = camera, 2 = microphone.
 const TrackSource = { CAMERA: 1, MICROPHONE: 2 } as const;
 
-type Action = 'mute' | 'muteAll' | 'remove' | 'end' | 'admit' | 'deny' | 'roomSet' | 'setRole';
+type Action = 'mute' | 'muteAll' | 'remove' | 'end' | 'admit' | 'admitAll' | 'deny' | 'roomSet' | 'setRole';
 type Body = {
   action?: Action;
   target?: string;
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       if (me.role !== 'host') return deny();
     } else if (a === 'remove' || a === 'deny') {
       if (!can(me, 'kick') && !(a === 'deny' && can(me, 'admit'))) return deny();
-    } else if (a === 'admit') {
+    } else if (a === 'admit' || a === 'admitAll') {
       if (!can(me, 'admit')) return deny();
     } else if (a === 'mute' || a === 'muteAll') {
       if (!can(me, 'mute')) return deny();
@@ -66,6 +66,16 @@ export async function POST(req: Request) {
         await svc.updateRoomMetadata(member.room, JSON.stringify({ ...cur, blocked }));
       }
       await svc.removeParticipant(member.room, target);
+    } else if (a === 'admitAll') {
+      const list = await svc.listParticipants(member.room);
+      let cur = await getRoomMeta(member.room);
+      for (const p of list) {
+        const pm = parseMeta(p.metadata);
+        if (pm.status !== 'waiting') continue;
+        await svc.updateParticipant(member.room, p.identity, JSON.stringify({ ...pm, status: 'in', blocked: false }), OPEN as never);
+        if (pm.cid && cur.blocked?.includes(pm.cid)) cur = { ...cur, blocked: cur.blocked.filter((c) => c !== pm.cid) };
+      }
+      await svc.updateRoomMetadata(member.room, JSON.stringify(cur));
     } else if (a === 'admit') {
       const p = await svc.getParticipant(member.room, target);
       const pm = parseMeta(p.metadata);

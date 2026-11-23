@@ -139,3 +139,48 @@ export function useHelper(token: TokenRef) {
 
   return { messages, loading, error, detail, ask };
 }
+
+export type CandidateFacts = { name: string; facts: { kind: string; text: string; at?: string }[]; suggestedQuestions: string[] };
+
+/** Live notes for every candidate. Refreshes by itself while the conversation grows. */
+export function useFacts(token: TokenRef, tx: TxSeg[], startedAt: number, enabled: boolean, hosts: string[], role: string) {
+  const [people, setPeople] = useState<CandidateFacts[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<AiError>(null);
+  const [detail, setDetail] = useState('');
+  const [updated, setUpdated] = useState(0);
+  const lastCount = useRef(0);
+  const lastAt = useRef(0);
+  const busy = useRef(false);
+  const txRef = useRef(tx);
+  txRef.current = tx;
+
+  const refresh = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setLoading(true);
+    lastAt.current = Date.now();
+    lastCount.current = txRef.current.length;
+    const r = await post<{ result: { people?: CandidateFacts[] } }>('/api/ai/facts', token.current, { transcript: toSegs(txRef.current, startedAt), hosts, role });
+    if (r.ok) {
+      setPeople(Array.isArray(r.data.result.people) ? r.data.result.people.map((p) => ({ name: String(p.name), facts: Array.isArray(p.facts) ? p.facts : [], suggestedQuestions: Array.isArray(p.suggestedQuestions) ? p.suggestedQuestions : [] })) : []);
+      setError(null);
+      setUpdated(Date.now());
+    } else {
+      setError(r.error);
+      setDetail(r.detail || '');
+    }
+    setLoading(false);
+    busy.current = false;
+  }, [token, startedAt, hosts, role]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => {
+      if (txRef.current.length - lastCount.current >= 3 && Date.now() - lastAt.current > 30000) refresh();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [enabled, refresh]);
+
+  return { people, loading, error, detail, updated, refresh };
+}

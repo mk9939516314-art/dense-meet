@@ -1,29 +1,148 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clientId, driveLinked, startDriveUpload, type DriveUpload } from '@/lib/drive';
+import type { Track } from 'livekit-client';
+import { clientId, driveLinked, driveToken, startDriveUpload, type DriveUpload } from '@/lib/drive';
+import { openRecordingFile, type FileSink } from '@/lib/localfolder';
+import { isMobile, type Prefs } from '@/lib/prefs';
 
 export type RecState = 'idle' | 'starting' | 'recording' | 'saving';
 
+type StartOpts = {
+  code: string;
+  prefs: Prefs;
+  micTrack?: MediaStreamTrack | null;
+  /** Remote audio currently playing, so a phone recording can mix it in. */
+  audioTracks: () => { sid: string; track: Track }[];
+};
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** Draws the star-field (every orb and any shared screen) onto a canvas so phones, which cannot capture a tab, can record too. */
+function startCompositor(stage: HTMLElement) {
+  const r0 = stage.getBoundingClientRect();
+  const scale = Math.min(1, 1280 / Math.max(r0.width, 1));
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(2, Math.round((r0.width * scale) / 2) * 2);
+  cv.height = Math.max(2, Math.round((r0.height * scale) / 2) * 2);
+  const ctx = cv.getContext('2d')!;
+  // A worker keeps ticking when the tab is in the background, so the recording does not freeze when the host switches tabs.
+  const worker = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(1),40)'], { type: 'text/javascript' })));
+
+  const draw = () => {
+    const sr = stage.getBoundingClientRect();
+    const k = cv.width / Math.max(sr.width, 1);
+    ctx.fillStyle = '#0b0b0f';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    stage.querySelectorAll<HTMLElement>('.screen, .orb').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      const x = (r.left - sr.left) * k;
+      const y = (r.top - sr.top) * k;
+      const w = r.width * k;
+      const h = r.height * k;
+      const video = el.querySelector('video');
+      ctx.save();
+      if (el.classList.contains('screen')) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x, y, w, h);
+        if (video && video.readyState >= 2) {
+          const ar = video.videoWidth / Math.max(video.videoHeight, 1);
+          const dw = Math.min(w, h * ar);
+          ctx.drawImage(video, x + (w - dw) / 2, y, dw, dw / ar);
+        }
+        ctx.restore();
+        return;
+      }
+      const tile = el.classList.contains('is-tile');
+      ctx.beginPath();
+      if (tile) ctx.roundRect(x, y, w, h, 14 * k);
+      else ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) / 2, 0, Math.PI * 2);
+      ctx.clip();
+      if (video && video.readyState >= 2 && !video.classList.contains('hidden') && !el.classList.contains('no-video')) {
+        const vw = video.videoWidth || 1;
+        const vh = video.videoHeight || 1;
+        const s = Math.max(w / vw, h / vh);
+        const mirror = video.classList.contains('mirror');
+        if (mirror) {
+          ctx.translate(x + w, y);
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, (w - vw * s) / 2, (h - vh * s) / 2, vw * s, vh * s);
+        } else ctx.drawImage(video, x + (w - vw * s) / 2, y + (h - vh * s) / 2, vw * s, vh * s);
+      } else {
+        const face = el.querySelector<HTMLElement>('.orb-face');
+        const hue = getComputedStyle(el).getPropertyValue('--h') || '28';
+        const g = ctx.createRadialGradient(x + w * 0.3, y + h * 0.25, 2, x + w / 2, y + h / 2, Math.max(w, h) * 0.7);
+        g.addColorStop(0, `hsl(${hue} 85% 70%)`);
+        g.addColorStop(0.6, `hsl(${hue} 65% 38%)`);
+        g.addColorStop(1, `hsl(${hue} 60% 20%)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        const img = face?.querySelector('img');
+        if (img && img.complete && img.naturalWidth) ctx.drawImage(img, x, y, w, h);
+        else {
+          ctx.fillStyle = 'rgba(255,255,255,.94)';
+          ctx.font = `600 ${Math.round(Math.min(w, h) * 0.32)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(el.querySelector('.orb-initials')?.textContent || '', x + w / 2, y + h / 2);
+        }
+      }
+      ctx.restore();
+      if (el.classList.contains('is-speaking')) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,.9)';
+        ctx.lineWidth = 3 * k;
+        ctx.beginPath();
+        if (tile) ctx.roundRect(x, y, w, h, 14 * k);
+        else ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) / 2 + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const name = el.querySelector('.orb-name-text')?.textContent || '';
+      if (name) {
+        ctx.save();
+        ctx.font = `500 ${Math.max(11, 12 * k)}px sans-serif`;
+        const tw = ctx.measureText(name).width + 16;
+        const nx = tile ? x + 8 : x + w / 2 - tw / 2;
+        const ny = tile ? y + h - 28 : y + h + 8;
+        ctx.fillStyle = 'rgba(5,6,12,.7)';
+        ctx.beginPath();
+        ctx.roundRect(nx, ny, tw, 20, 10);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name, nx + 8, ny + 10);
+        ctx.restore();
+      }
+    });
+  };
+  worker.onmessage = draw;
+  return { stream: cv.captureStream(25), stop: () => worker.terminate() };
+}
+
 /**
- * Records this browser tab (the star-field and everyone's sound) with the host's own mic mixed in.
- * Chunks stream to the host's Google Drive when it is linked, otherwise the file downloads at the end.
+ * Records the meeting from inside the page: the stage is drawn onto a canvas and every voice is mixed in, so nobody has to pick a screen to share.
+ * Chunks stream to Google Drive and/or a folder on the computer, in a folder per day.
  */
 export function useRecorder(onChange: (on: boolean) => void) {
   const [state, setState] = useState<RecState>('idle');
   const [note, setNote] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const driveRef = useRef<DriveUpload | null>(null);
-  const chunks = useRef<Blob[]>([]);
+  const cleanups = useRef<(() => void)[]>([]);
+  const drive = useRef<DriveUpload | null>(null);
+  const sink = useRef<FileSink | null>(null);
+  const keep = useRef<Blob[]>([]);
 
   const cleanup = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    ctxRef.current?.close().catch(() => {});
-    ctxRef.current = null;
+    cleanups.current.forEach((f) => {
+      try {
+        f();
+      } catch {
+        /* ignore */
+      }
+    });
+    cleanups.current = [];
   }, []);
 
   const stop = useCallback(() => {
@@ -34,60 +153,110 @@ export function useRecorder(onChange: (on: boolean) => void) {
   }, []);
 
   const start = useCallback(
-    async (micTrack?: MediaStreamTrack | null) => {
+    async (o: StartOpts) => {
       setNote(null);
       setLink(null);
-      if (!navigator.mediaDevices || !('getDisplayMedia' in navigator.mediaDevices) || typeof MediaRecorder === 'undefined') {
-        setNote('Recording needs a desktop browser such as Chrome or Edge.');
-        return;
-      }
+      if (typeof MediaRecorder === 'undefined') return setNote('This browser cannot record. Use a recent Chrome, Edge or Safari.');
+      const mobile = isMobile();
+      const wantDrive = mobile ? true : o.prefs.recordTo !== 'folder';
+      const wantFolder = !mobile && o.prefs.recordTo !== 'drive';
       setState('starting');
-      try {
-        const display = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: 30 },
-          audio: true,
-          // Chrome: offer this tab first so the host just clicks Share.
-          ...({ preferCurrentTab: true, selfBrowserSurface: 'include', systemAudio: 'include' } as object),
-        });
-        // Mix tab audio and the host's microphone into one track.
-        const ctx = new AudioContext();
-        ctxRef.current = ctx;
-        const dest = ctx.createMediaStreamDestination();
-        if (display.getAudioTracks().length) ctx.createMediaStreamSource(new MediaStream([display.getAudioTracks()[0]])).connect(dest);
-        if (micTrack && micTrack.readyState === 'live') ctx.createMediaStreamSource(new MediaStream([micTrack])).connect(dest);
-        const stream = new MediaStream([...display.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-        streamRef.current = display;
+      const d = new Date();
+      const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+      const name = `Dense Meet ${pad(d.getHours())}-${pad(d.getMinutes())} (${o.code}).${ext}`;
+      const notes: string[] = [];
 
-        const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
-        const name = `Dense Meet ${new Date().toISOString().slice(0, 16).replace('T', ' ')}.webm`;
-        driveRef.current = null;
-        if (clientId() && driveLinked()) {
-          try {
-            driveRef.current = await startDriveUpload(name, mime || 'video/webm');
-          } catch {
-            setNote('Could not reach Google Drive. The recording will download to this device instead.');
+      try {
+        // Destinations first: both need a click, which we still have here.
+        drive.current = null;
+        sink.current = null;
+        if (wantDrive) {
+          if (!clientId()) {
+            if (mobile) throw new Error('Google Drive is not set up on this site, so a phone cannot record yet.');
+            notes.push('Google Drive is not set up on this site.');
+          } else {
+            try {
+              if (!driveLinked()) await driveToken(true);
+              drive.current = await startDriveUpload(name, mime || 'video/webm', day);
+            } catch {
+              if (mobile) throw new Error('Link Google Drive in Settings to record on a phone.');
+              notes.push('Could not reach Google Drive.');
+            }
           }
         }
+        if (wantFolder) {
+          try {
+            sink.current = await openRecordingFile(day, name);
+          } catch {
+            notes.push('Pick a recording folder in Settings.');
+          }
+        }
+        if (!drive.current && !sink.current && !mobile) {
+          // Last resort on a computer: a normal download at the end.
+          notes.push('Saving to a normal download.');
+        }
 
-        const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: 3_000_000, audioBitsPerSecond: 128_000 });
-        chunks.current = [];
+        // Picture and sound.
+        const ctx = new AudioContext();
+        cleanups.current.push(() => ctx.close().catch(() => {}));
+        const dest = ctx.createMediaStreamDestination();
+        let videoTracks: MediaStreamTrack[] = [];
+
+        {
+          const stage = document.querySelector<HTMLElement>('.stage');
+          if (!stage) throw new Error('Open the meeting stage first.');
+          const comp = startCompositor(stage);
+          cleanups.current.push(comp.stop);
+          videoTracks = comp.stream.getVideoTracks();
+          const seen = new Set<string>();
+          const sync = () => {
+            o.audioTracks().forEach((a) => {
+              if (seen.has(a.sid) || !a.track.mediaStreamTrack) return;
+              seen.add(a.sid);
+              ctx.createMediaStreamSource(new MediaStream([a.track.mediaStreamTrack])).connect(dest);
+            });
+          };
+          sync();
+          const iv = setInterval(sync, 1500);
+          cleanups.current.push(() => clearInterval(iv));
+          try {
+            const wl = await (navigator as unknown as { wakeLock?: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock?.request('screen');
+            if (wl) cleanups.current.push(() => wl.release().catch(() => {}));
+          } catch {
+            /* optional */
+          }
+        }
+        if (o.micTrack && o.micTrack.readyState === 'live') ctx.createMediaStreamSource(new MediaStream([o.micTrack])).connect(dest);
+
+        const stream = new MediaStream([...videoTracks, ...dest.stream.getAudioTracks()]);
+        const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: mobile ? 1_800_000 : 3_000_000, audioBitsPerSecond: 128_000 });
+        keep.current = [];
+        const storing = Boolean(drive.current || sink.current);
         rec.ondataavailable = (e) => {
           if (!e.data.size) return;
-          if (driveRef.current) driveRef.current.push(e.data);
-          chunks.current.push(e.data);
-          // Keep memory small once Drive is receiving the data.
-          if (driveRef.current && !driveRef.current.failed()) chunks.current = [];
+          drive.current?.push(e.data);
+          sink.current?.write(e.data).catch(() => {});
+          if (!storing) keep.current.push(e.data);
         };
         rec.onstop = async () => {
-          const d = driveRef.current;
           cleanup();
           onChange(false);
-          if (d) {
-            const out = await d.finish().catch(() => null);
-            if (out) setLink(out.link);
-            else setNote('Upload to Drive did not finish. Check your Drive storage.');
-          } else {
-            const blob = new Blob(chunks.current, { type: mime || 'video/webm' });
+          let saved = '';
+          if (sink.current) {
+            await sink.current.close().catch(() => {});
+            saved = 'folder';
+          }
+          if (drive.current) {
+            const out = await drive.current.finish().catch(() => null);
+            if (out) {
+              setLink(out.link);
+              saved = 'drive';
+            } else setNote('The upload to Drive did not finish. Check your Drive storage.');
+          }
+          if (!storing && keep.current.length) {
+            const blob = new Blob(keep.current, { type: mime || 'video/webm' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = name;
@@ -96,30 +265,36 @@ export function useRecorder(onChange: (on: boolean) => void) {
             a.remove();
             setTimeout(() => URL.revokeObjectURL(a.href), 4000);
           }
-          chunks.current = [];
-          driveRef.current = null;
+          if (saved === 'folder') setNote('Recording saved in your recordings folder.');
+          keep.current = [];
+          drive.current = null;
+          sink.current = null;
           recRef.current = null;
           setState('idle');
         };
-        // Stopping the browser's own "sharing" bar ends the recording cleanly.
-        display.getVideoTracks()[0].addEventListener('ended', () => stop());
         recRef.current = rec;
         rec.start(4000);
         setState('recording');
         onChange(true);
-      } catch {
+        if (notes.length) setNote(notes.join(' '));
+      } catch (e) {
         cleanup();
+        drive.current = null;
+        sink.current = null;
         setState('idle');
-        setNote('Recording was cancelled.');
+        setNote(e instanceof Error && e.message && e.name !== 'NotAllowedError' ? e.message : 'Recording was cancelled.');
       }
     },
     [cleanup, onChange, stop],
   );
 
-  useEffect(() => () => {
-    if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop();
-    cleanup();
-  }, [cleanup]);
+  useEffect(
+    () => () => {
+      if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop();
+      cleanup();
+    },
+    [cleanup],
+  );
 
   return { state, note, link, start, stop, clearNote: () => setNote(null) };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { Crown, Hand, MicOff, Pin } from 'lucide-react';
+import { Hand, MicOff, Pin } from 'lucide-react';
 import type { Box } from '@/lib/layout';
 import type { PInfo } from '@/lib/types';
 import { cx, hashHue, initials } from '@/lib/util';
@@ -45,6 +45,7 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
         box.shape === 'tile' ? 'is-tile' : 'is-orb',
         box.small && 'is-small',
         p.isHost && 'is-host',
+        p.hand && 'is-hand',
         p.speaking && 'is-speaking',
         !showVideo && 'no-video',
         pinned && 'is-pinned',
@@ -66,11 +67,7 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
         <div className="orb-face">
           {showVideo ? <VideoView track={p.cam!} mirror={p.isLocal} /> : (p.pic ? <img className="orb-pic" src={p.pic} alt="" /> : <span className="orb-initials">{initials(p.name)}</span>)}
         </div>
-        {p.isHost && (
-          <div className="orb-crown" title="Host">
-            <Crown fill="currentColor" strokeWidth={1.5} />
-          </div>
-        )}
+        {p.isHost && <div className="orb-hostpill">Host</div>}
         <div className="orb-name">
           <span className="orb-name-text">{p.isLocal ? 'You' : p.name}</span>
           {p.isHost && <em>Host</em>}

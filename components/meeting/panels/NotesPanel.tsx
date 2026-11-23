@@ -5,6 +5,7 @@ import { Check, Copy, Download, FileText, Lightbulb, RefreshCw, Sparkles, Wand2 
 import { useCopilot, useSummary, type AiError } from '@/hooks/useAi';
 import type { PInfo, TxSeg } from '@/lib/types';
 import { cx, mmss } from '@/lib/util';
+import { saveNotes } from '@/lib/profile';
 import SummaryView, { summaryToMarkdown } from './SummaryView';
 
 type Props = {
@@ -24,6 +25,7 @@ type Props = {
   setLang: (v: string) => void;
   interim: string;
   interview?: boolean;
+  roomCode?: string;
 };
 
 const LANGS = [
@@ -62,6 +64,9 @@ export default function NotesPanel(p: Props) {
 
   const copilot = useCopilot(token, tx, startedAt, isHost && notesOn && configured === true, topics, hosts);
   const summary = useSummary(token, tx, startedAt);
+  useEffect(() => {
+    if (summary.result && p.roomCode) saveNotes(p.roomCode, summary.result);
+  }, [summary.result, p.roomCode]);
 
   const talk = useMemo(() => {
     const words = new Map<string, number>();

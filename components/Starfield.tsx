@@ -39,8 +39,8 @@ export default function Starfield({ density = 6500 }: { density?: number }) {
           r: 0.25 + depth * 1.3,
           p: Math.random() * 6.28,
           v: Math.random() * 0.0015 + 0.0005,
-          vx: -(4 + depth * 16), // px per second
-          vy: 1.5 + depth * 5,
+          vx: -(2.6 + depth * 10), // px per second
+          vy: 1 + depth * 3.2,
           c: i % 9 === 0 ? '#ffd9c9' : i % 13 === 0 ? '#bff5dd' : '#ffffff',
         };
       });

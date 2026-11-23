@@ -68,6 +68,7 @@ export default function Stage({ participants, mode, pinned, onPin, reactions, bo
       .filter((p) => p.identity !== centerId)
       .sort((a, b) => {
         if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+        if (a.hand !== b.hand) return a.hand ? -1 : 1;
         const la = lastSpoke.current.get(a.identity) || 0;
         const lb = lastSpoke.current.get(b.identity) || 0;
         if (la !== lb) return lb - la;

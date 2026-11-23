@@ -84,3 +84,20 @@ export function pushHistory(item: HistoryItem) {
     /* storage unavailable */
   }
 }
+
+/** Notes the host generated, kept on this device so they can be read later from History. */
+export function saveNotes(code: string, summary: unknown) {
+  try {
+    localStorage.setItem('dm-notes-' + code, JSON.stringify({ at: Date.now(), summary }));
+  } catch {
+    /* storage full or unavailable */
+  }
+}
+export function readNotes(code: string): { at: number; summary: unknown } | null {
+  try {
+    const v = localStorage.getItem('dm-notes-' + code);
+    return v ? JSON.parse(v) : null;
+  } catch {
+    return null;
+  }
+}

@@ -14,7 +14,21 @@ declare global {
   }
 }
 
-export const clientId = () => process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+export const clientId = () => {
+  try {
+    return (localStorage.getItem('dm-gcid') || '').trim() || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  } catch {
+    return process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  }
+};
+export const setClientId = (v: string) => {
+  try {
+    if (v.trim()) localStorage.setItem('dm-gcid', v.trim());
+    else localStorage.removeItem('dm-gcid');
+  } catch {
+    /* ignore */
+  }
+};
 
 let gisPromise: Promise<void> | null = null;
 function loadGis() {
@@ -76,14 +90,14 @@ export const driveUnlink = () => {
   }
 };
 
-async function folderId(t: string): Promise<string> {
-  const q = encodeURIComponent("name='Dense Meet Recordings' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-  const f = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: `Bearer ${t}` } }).then((r) => r.json());
+async function ensureFolder(t: string, name: string, parent?: string): Promise<string> {
+  const qs = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false${parent ? ` and '${parent}' in parents` : ''}`;
+  const f = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(qs)}&fields=files(id)`, { headers: { Authorization: `Bearer ${t}` } }).then((r) => r.json());
   if (f.files?.[0]?.id) return f.files[0].id;
   const c = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'Dense Meet Recordings', mimeType: 'application/vnd.google-apps.folder' }),
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', ...(parent ? { parents: [parent] } : {}) }),
   }).then((r) => r.json());
   return c.id;
 }
@@ -91,9 +105,10 @@ async function folderId(t: string): Promise<string> {
 export type DriveUpload = { push: (blob: Blob) => void; finish: () => Promise<{ id: string; link: string } | null>; failed: () => boolean };
 
 /** Starts a resumable upload and streams the recording to Drive while it is being recorded. */
-export async function startDriveUpload(name: string, mime: string): Promise<DriveUpload> {
+export async function startDriveUpload(name: string, mime: string, day: string): Promise<DriveUpload> {
   const t = await driveToken(false).catch(() => driveToken(true));
-  const parent = await folderId(t);
+  const root = await ensureFolder(t, 'Dense Meet Recordings');
+  const parent = await ensureFolder(t, day, root);
   const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
     method: 'POST',
     headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime },

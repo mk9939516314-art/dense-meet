@@ -11,9 +11,15 @@ Video meetings for Dense AI: star-field UI, host roles and permissions, waiting 
 3. Deploy. To test the AI key open `/api/ai/status?test=1`.
 
 ## Google Drive recording
-Google Cloud Console > APIs and services > enable Google Drive API > Credentials > OAuth client ID (Web). Add your Vercel domain under Authorised JavaScript origins and set the id as `NEXT_PUBLIC_GOOGLE_CLIENT_ID`. Hosts then link Drive from Settings in a meeting.
+1. console.cloud.google.com > create a project > APIs and services > Library > enable **Google Drive API**.
+2. OAuth consent screen: External, add yourself as a test user (or publish the app).
+3. Credentials > Create credentials > OAuth client ID > Web application. Under Authorised JavaScript origins add your Vercel URL (and `http://localhost:3000` for local work).
+4. Copy the client ID into Vercel as `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and redeploy. Or paste it in the app under Settings > Recording.
+5. Settings > Recording > Link Google Drive. Recordings go to *Dense Meet Recordings / YYYY-MM-DD*.
+
+Recording happens inside the page (the stage is drawn to a canvas and every voice is mixed in), so nobody has to pick a screen, and it works on phones. On a computer you can also pick a local folder.
 
 ## Notes
 - LiveKit free plan has a monthly participant-minute cap.
 - Transcription uses the browser speech API (Chrome, Edge and Safari work best).
-- Recording captures the host's browser tab, so it works on desktop Chrome and Edge.
+- Keep the meeting tab open while recording. On a phone keep the screen on (the app asks the phone to stay awake).
