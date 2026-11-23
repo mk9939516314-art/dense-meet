@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   applicationName: 'Dense Meet',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Dense Meet', statusBarStyle: 'black-translucent' },
-  icons: { icon: '/icon.svg', apple: '/apple-icon.png' },
+  icons: { icon: [{ url: '/favicon-64.png', sizes: '64x64', type: 'image/png' }, { url: '/icon-192.png', sizes: '192x192', type: 'image/png' }], apple: '/apple-icon.png' },
   openGraph: {
     title: 'Dense Meet',
     description: 'Meetings that listen, think and help.',

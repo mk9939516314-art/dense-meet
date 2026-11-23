@@ -205,7 +205,7 @@ blockquote { margin: 4px 0; padding: 6px 10px; border-left: 2px solid var(--prim
 .landing > *:not(.starfield):not(.aurora):not(.modal-back) { position: relative; z-index: 1; }
 .nav { display: flex; align-items: center; justify-content: space-between; max-width: 1180px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 20px 12px; }
 .logo { display: inline-flex; align-items: center; gap: 10px; font: 600 18px var(--font-d); }
-.logo-mark { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #d7c4ff, #7c4ddb 60%, #2a1060); box-shadow: 0 0 20px rgba(160, 120, 255, 0.6); }
+.logo-mark { width: 32px; height: 32px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.45)); }
 .nav-links { display: none; gap: 24px; color: var(--muted); font-weight: 500; }
 .nav-links a:hover { color: var(--text); }
 @media (min-width: 700px) { .nav-links { display: flex; } }
@@ -657,3 +657,9 @@ button, a, input, select, label, [role='button'] { touch-action: manipulation; }
   .controlbar > * { padding-left: 10px; padding-right: 10px; }
 }
 @media (min-width: 900px) and (max-width: 1020px) { .controlbar > .cb-left { display: none; } }
+
+/* Phones: sections hug their content instead of filling the whole screen. */
+@media (max-width: 899px) {
+  .screen-block, .screen-block.short { min-height: 0; padding: 44px 20px; }
+  .hero, .screen-block.hero { min-height: 0; padding-top: 16px; padding-bottom: 40px; gap: 28px; }
+}

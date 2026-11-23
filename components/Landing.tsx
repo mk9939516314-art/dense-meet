@@ -172,7 +172,7 @@ export default function Landing() {
 
       <header className="nav">
         <a className="logo" href="/" aria-label="Dense Meet home">
-          <span className="logo-mark" />
+          <img className="logo-mark" src="/logo.png" alt="" width={32} height={32} />
           <span>Dense Meet</span>
         </a>
         <nav className="nav-links">
@@ -257,7 +257,7 @@ export default function Landing() {
           <div className="split-copy" data-reveal>
             <span className="eyebrow"><Star /> The star-field view</span>
             <h2>Whoever speaks glides to the centre.</h2>
-            <p>Everyone else keeps floating around them like stars. The host wears a crown, so you always know who is running the room. Prefer a grid or a speaker layout? One tap.</p>
+            <p>Everyone else keeps floating around them like stars. The host carries a gold HOST tag, so you always know who is running the room. Prefer a grid or a speaker layout? One tap.</p>
             <ul className="ticks">
               <li><Check /> Instant, smooth movement as the conversation moves</li>
               <li><Check /> Host and role badges you can see at a glance</li>
@@ -368,7 +368,7 @@ export default function Landing() {
       {settings && <SettingsModal onClose={() => setSettings(false)} />}
       <footer className="footer">
         <div className="footer-brand">
-          <a className="logo" href="/"><span className="logo-mark" /> Dense Meet</a>
+          <a className="logo" href="/"><img className="logo-mark" src="/logo.png" alt="" width={32} height={32} /> Dense Meet</a>
           <p className="muted">Video meetings with built-in AI, from Dense AI.</p>
         </div>
         <nav aria-label="Footer">
