@@ -599,13 +599,16 @@ button, a, input, select, label, [role='button'] { touch-action: manipulation; }
 }
 
 /* ---------- Mic and camera split buttons ---------- */
-.pop-anchor.split { display: inline-flex; align-items: center; }
-.pop-anchor.split .cbtn { border-top-right-radius: 14px; border-bottom-right-radius: 14px; margin-right: -6px; z-index: 1; }
-.cbtn-arrow { width: 28px; height: 50px; border-radius: 0 25px 25px 0; border: 1px solid var(--line-strong); border-left: 0; background: var(--surface-3); color: var(--text); display: grid; place-items: center; padding-left: 6px; }
+/* One pill: main button and arrow share a single border, background and state. */
+.pop-anchor.split { display: inline-flex; align-items: stretch; height: 50px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--line-strong); color: var(--text); transition: background 0.15s, border-color 0.15s; }
+.pop-anchor.split.is-off { background: rgba(239, 79, 91, 0.2); border-color: rgba(239, 79, 91, 0.55); color: #ffb9be; }
+.pop-anchor.split .cbtn { width: 46px; height: 100%; border: 0; border-radius: 999px 0 0 999px; background: transparent; color: inherit; margin: 0; }
+.pop-anchor.split .cbtn.is-off { background: transparent; border: 0; color: inherit; }
+.cbtn-arrow { width: 28px; border: 0; border-left: 1px solid rgba(255, 255, 255, 0.12); border-radius: 0 999px 999px 0; background: transparent; color: inherit; display: grid; place-items: center; padding: 0 2px 0 0; }
+.pop-anchor.split.is-off .cbtn-arrow { border-left-color: rgba(239, 79, 91, 0.4); }
 .cbtn-arrow svg { width: 16px; height: 16px; transition: transform 0.15s; }
 .cbtn-arrow.is-active svg { transform: rotate(180deg); }
-.cbtn-arrow.is-off { background: rgba(239, 79, 91, 0.2); border-color: rgba(239, 79, 91, 0.55); color: #ffb9be; }
-.pop-anchor.split .cbtn { border-radius: 25px 0 0 25px; }
+.pop-anchor.split:active { transform: scale(0.97); }
 .device-pop { width: 300px; max-height: 60dvh; overflow-y: auto; padding: 8px; }
 .dev-sec + .dev-sec { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .dev-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
@@ -614,4 +617,12 @@ button, a, input, select, label, [role='button'] { touch-action: manipulation; }
 .menu-item.dev .dev-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-item.dev.on { color: var(--primary-2); }
 .menu-item.dev svg { width: 16px; height: 16px; }
-@media (max-width: 899px) { .device-pop { width: auto; } .cbtn-arrow { height: 46px; } }
+@media (max-width: 899px) { .device-pop { width: auto; } .pop-anchor.split { height: 46px; } .pop-anchor.split .cbtn { width: 42px; } .cbtn-arrow { width: 26px; } }
+@media (max-width: 380px) { .pop-anchor.split { height: 42px; } .pop-anchor.split .cbtn { width: 38px; } .cbtn-arrow { width: 22px; } }
+
+/* ---------- Desktop: floating control bar ---------- */
+@media (min-width: 900px) {
+  .room-main { padding-bottom: 96px; }
+  .controlbar { position: absolute; left: 20px; right: 20px; bottom: 18px; min-height: 68px; padding: 9px 18px; border: 1px solid var(--line-strong); border-radius: 26px; background: rgba(19, 18, 24, 0.88); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55); }
+  .popover { bottom: calc(100% + 16px); }
+}

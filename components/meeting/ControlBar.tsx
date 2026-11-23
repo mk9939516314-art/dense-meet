@@ -115,7 +115,7 @@ export default function ControlBar(p: Props) {
       </div>
 
       <div className="cb-center">
-        <div className="pop-anchor split">
+        <div className={cx('pop-anchor split', !micOn && 'is-off')}>
           <button className={cx('cbtn', !micOn && 'is-off')} type="button" onClick={p.onMic} aria-label={micOn ? 'Turn off microphone' : 'Turn on microphone'} aria-pressed={micOn}>
             {micOn ? <Mic /> : <MicOff />}
           </button>
@@ -124,7 +124,7 @@ export default function ControlBar(p: Props) {
           </button>
           {open === 'mic' && <DeviceMenu kinds={['audioinput', 'audiooutput']} onSwitch={p.onSwitch} />}
         </div>
-        <div className="pop-anchor split">
+        <div className={cx('pop-anchor split', !camOn && 'is-off')}>
           <button className={cx('cbtn', !camOn && 'is-off')} type="button" onClick={p.onCam} aria-label={camOn ? 'Turn off camera' : 'Turn on camera'} aria-pressed={camOn}>
             {camOn ? <Video /> : <VideoOff />}
           </button>

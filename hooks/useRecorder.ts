@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Track } from 'livekit-client';
 import { clientId, driveLinked, driveToken, startDriveUpload, type DriveUpload } from '@/lib/drive';
-import { openRecordingFile, type FileSink } from '@/lib/localfolder';
+import { folderName, openRecordingFile, type FileSink } from '@/lib/localfolder';
 import { isMobile, type Prefs } from '@/lib/prefs';
 
 export type RecState = 'idle' | 'starting' | 'recording' | 'saving';
@@ -29,11 +29,29 @@ function startCompositor(stage: HTMLElement) {
   // A worker keeps ticking when the tab is in the background, so the recording does not freeze when the host switches tabs.
   const worker = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(1),40)'], { type: 'text/javascript' })));
 
+  // Fixed star positions so the recording looks like the meeting, not an empty black frame.
+  const stars = Array.from({ length: 70 }, (_, i) => {
+    const a = Math.sin(i * 12.9898) * 43758.5453;
+    const b = Math.sin(i * 78.233) * 12543.123;
+    return { x: a - Math.floor(a), y: b - Math.floor(b), r: 0.6 + ((i * 7) % 5) * 0.35, o: 0.35 + ((i * 3) % 6) / 10 };
+  });
   const draw = () => {
     const sr = stage.getBoundingClientRect();
     const k = cv.width / Math.max(sr.width, 1);
     ctx.fillStyle = '#0b0b0f';
     ctx.fillRect(0, 0, cv.width, cv.height);
+    const bg = ctx.createRadialGradient(cv.width * 0.5, cv.height * 0.45, 10, cv.width * 0.5, cv.height * 0.5, Math.max(cv.width, cv.height) * 0.7);
+    bg.addColorStop(0, 'rgba(139,92,246,.20)');
+    bg.addColorStop(0.55, 'rgba(244,114,182,.07)');
+    bg.addColorStop(1, 'rgba(11,11,15,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    stars.forEach((st) => {
+      ctx.fillStyle = `rgba(255,255,255,${st.o})`;
+      ctx.beginPath();
+      ctx.arc(st.x * cv.width, st.y * cv.height, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
     stage.querySelectorAll<HTMLElement>('.screen, .orb').forEach((el) => {
       const r = el.getBoundingClientRect();
       const x = (r.left - sr.left) * k;
@@ -98,6 +116,20 @@ function startCompositor(stage: HTMLElement) {
         ctx.stroke();
         ctx.restore();
       }
+      if (el.classList.contains('is-host') && !tile) {
+        ctx.save();
+        ctx.font = `700 ${Math.max(9, 10 * k)}px sans-serif`;
+        const hw = ctx.measureText('HOST').width + 16;
+        ctx.fillStyle = '#f2c14e';
+        ctx.beginPath();
+        ctx.roundRect(x + w / 2 - hw / 2, y - 8, hw, 16, 8);
+        ctx.fill();
+        ctx.fillStyle = '#1b1405';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('HOST', x + w / 2, y);
+        ctx.restore();
+      }
       const name = el.querySelector('.orb-name-text')?.textContent || '';
       if (name) {
         ctx.save();
@@ -158,8 +190,10 @@ export function useRecorder(onChange: (on: boolean) => void) {
       setLink(null);
       if (typeof MediaRecorder === 'undefined') return setNote('This browser cannot record. Use a recent Chrome, Edge or Safari.');
       const mobile = isMobile();
-      const wantDrive = mobile ? true : o.prefs.recordTo !== 'folder';
-      const wantFolder = !mobile && o.prefs.recordTo !== 'drive';
+      const hasFolder = !mobile && Boolean(await folderName());
+      // A chosen folder always receives the recording; Drive is added when linked (or when it is the only choice).
+      const wantFolder = !mobile && (o.prefs.recordTo !== 'drive' || hasFolder || !clientId());
+      const wantDrive = mobile ? true : o.prefs.recordTo !== 'folder' && Boolean(clientId());
       setState('starting');
       const d = new Date();
       const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

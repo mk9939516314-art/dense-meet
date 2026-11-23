@@ -222,6 +222,7 @@ export default function SettingsModal({ onClose, start = 'profile', inMeeting = 
                       onClick={async () => {
                         try {
                           setFolder(await pickFolder());
+                          if (prefs.recordTo === 'drive') setP({ recordTo: 'folder' });
                         } catch {
                           /* cancelled */
                         }
