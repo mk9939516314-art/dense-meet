@@ -11,6 +11,11 @@ export function summaryToMarkdown(s: MeetingSummary, title: string) {
     out.push('## People');
     s.people.forEach((p) => {
       out.push('', `### ${p.name}`, p.summary || '');
+      if (p.experience) out.push('', '**Experience**', p.experience);
+      if (p.answers?.length) {
+        out.push('', `**Answers${typeof p.accuracy === 'number' ? ` (${Math.round(p.accuracy)}% correct)` : ''}**`);
+        p.answers.forEach((a) => out.push(`- ${a.question} - ${a.verdict}: ${a.answer}${a.correction ? ` Correction: ${a.correction}` : ''}`));
+      }
       if (p.strengths?.length) out.push('', '**Strengths**', list(p.strengths));
       if (p.concerns?.length) out.push('', '**Concerns**', list(p.concerns));
       if (p.scores?.length) out.push('', '**Suggested scores (1-5)**', p.scores.map((x) => `- ${x.criterion}: ${x.score} - ${x.reason}`).join('\n'));
@@ -69,6 +74,33 @@ export default function SummaryView({ s }: { s: MeetingSummary }) {
         <div key={i} className="person-card">
           <strong>{p.name}</strong>
           <p>{p.summary}</p>
+          {p.experience && (
+            <>
+              <h5>Experience</h5>
+              <p>{p.experience}</p>
+            </>
+          )}
+          {p.answers && p.answers.length > 0 && (
+            <>
+              <h5>
+                Answers {typeof p.accuracy === 'number' && <span className="muted">· {Math.round(p.accuracy)}% correct</span>}
+              </h5>
+              {typeof p.accuracy === 'number' && (
+                <div className="accbar" aria-label={`${Math.round(p.accuracy)} percent correct`}>
+                  <i style={{ width: `${Math.max(0, Math.min(100, p.accuracy))}%` }} />
+                </div>
+              )}
+              <div className="answers">
+                {p.answers.map((a, k) => (
+                  <div key={k} className={`answer ${a.verdict}`}>
+                    <div className="q">{a.question}</div>
+                    <div className="muted">{a.answer}</div>
+                    {a.correction && <div className="fix">Correction: {a.correction}</div>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           {p.scores?.length > 0 && (
             <div className="scores">
               {p.scores.map((sc, j) => (

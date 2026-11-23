@@ -8,7 +8,7 @@ import { cx } from '@/lib/util';
 const SUGGESTIONS = ['What services does Dense AI offer?', 'How does Dense AI check quality?', 'How do pilots work?', 'How do I use this meeting?'];
 
 export default function HelperPanel({ token, configured }: { token: { current: string }; configured: boolean | null }) {
-  const { messages, loading, error, ask } = useHelper(token);
+  const { messages, loading, error, detail, ask } = useHelper(token);
   const [text, setText] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -72,7 +72,7 @@ export default function HelperPanel({ token, configured }: { token: { current: s
           )}
         </ul>
         {error && error !== 'not_configured' && (
-          <div className="notice warn">{error === 'busy' ? 'You are asking too fast. Wait a few seconds.' : 'The AI could not answer right now. Try again.'}</div>
+          <div className="notice warn">{error === 'busy' ? 'You are asking too fast. Wait a few seconds.' : 'The AI could not answer right now. Try again.'}{error === 'failed' && detail ? <><br /><span className="tiny muted">{detail}</span></> : null}</div>
         )}
         <div ref={endRef} />
       </div>

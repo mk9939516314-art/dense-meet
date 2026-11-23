@@ -7,8 +7,9 @@ import type { EndReason } from '@/hooks/useMeeting';
 const COPY: Record<EndReason, { title: string; body: string; icon: React.ReactNode }> = {
   left: { title: 'You left the meeting', body: 'You can rejoin any time while the meeting is open.', icon: <DoorOpen /> },
   ended: { title: 'The host ended the meeting', body: 'Thanks for joining. Start a new meeting whenever you need one.', icon: <DoorOpen /> },
-  removed: { title: 'You were removed', body: 'The host removed you from this meeting.', icon: <UserX /> },
+  removed: { title: 'You were removed', body: 'The host removed you from this meeting. You can ask to come back and the host will decide.', icon: <UserX /> },
   error: { title: 'Connection lost', body: 'We could not stay connected. Check your internet and try rejoining.', icon: <CircleAlert /> },
+  locked: { title: 'Meeting is locked', body: 'The host locked this meeting.', icon: <UserX /> },
 };
 
 export default function EndedScreen({ reason, onRejoin }: { reason: EndReason; onRejoin: () => void }) {
@@ -20,9 +21,9 @@ export default function EndedScreen({ reason, onRejoin }: { reason: EndReason; o
         <h1>{c.title}</h1>
         <p className="muted">{c.body}</p>
         <div className="row-gap center">
-          {reason !== 'removed' && reason !== 'ended' && (
+          {reason !== 'ended' && (
             <button className="btn-primary" type="button" onClick={onRejoin}>
-              Rejoin
+              {reason === 'removed' ? 'Ask to rejoin' : 'Rejoin'}
             </button>
           )}
           <Link className="btn-ghost" href="/">

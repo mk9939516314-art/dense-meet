@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Sparkles, Volume2, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, Camera, Hourglass, Mic, Sparkles, UserCheck, Volume2, WifiOff, X } from 'lucide-react';
 import type { useMeeting } from '@/hooks/useMeeting';
 import { useTranscription } from '@/hooks/useTranscription';
+import { useRecorder } from '@/hooks/useRecorder';
 import type { LayoutMode } from '@/lib/types';
 import { cx, mmss } from '@/lib/util';
 import Starfield from '../Starfield';
@@ -34,6 +35,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
   const [now, setNow] = useState(Date.now());
   const [toast, setToast] = useState<string | null>(null);
 
+  const rec = useRecorder(m.setRecording);
   const canShare = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices);
 
   useEffect(() => {
@@ -94,6 +96,22 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
   const captions = useMemo(() => m.tx.filter((s) => now - s.ts < 7000).slice(-2), [m.tx, now]);
   const hosts = m.participants.filter((p) => p.isHost).map((p) => p.name);
 
+  if (m.isWaiting) {
+    return (
+      <div className="room">
+        <Starfield />
+        <div className="ended waiting-screen">
+          <div className="ended-card">
+            <span className="ended-icon pulse"><Hourglass /></span>
+            <h1>Waiting for the host</h1>
+            <p className="muted">{m.me?.blocked ? 'You were removed earlier, so the host has to let you back in.' : 'The host will let you in shortly.'} Your camera and microphone stay off until then.</p>
+            <button className="btn-ghost" type="button" onClick={m.leave}>Leave</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="room">
       <Starfield />
@@ -106,6 +124,11 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
             {m.notesOn && (
               <span className="chip live">
                 <i className="dot live" /> AI notes on
+              </span>
+            )}
+            {m.recording && (
+              <span className="chip rec">
+                <i className="dot" /> Recording
               </span>
             )}
             {m.reconnecting && (
@@ -125,12 +148,39 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
               <Volume2 /> Tap to turn on sound
             </button>
           )}
+          {rec.note && (
+            <div className="banner">
+              <AlertTriangle /> {rec.note}
+              <button className="btn-icon small" type="button" onClick={rec.clearNote} aria-label="Dismiss"><X /></button>
+            </div>
+          )}
+          {rec.link && (
+            <a className="toast action" href={rec.link} target="_blank" rel="noreferrer">Recording saved to Google Drive <b>Open</b></a>
+          )}
           {m.mediaNote && (
             <div className="banner">
               <AlertTriangle /> {m.mediaNote}
               <button className="btn-icon small" type="button" onClick={m.clearMediaNote} aria-label="Dismiss">
                 <X />
               </button>
+            </div>
+          )}
+          {m.can('admit') && m.waitingToast && (
+            <button className="toast action" type="button" onClick={() => setPanel('people')}>
+              <UserCheck /> {m.waitingToast} <b>Review</b>
+            </button>
+          )}
+          {m.ask && (
+            <div className="ask-card" role="alertdialog" aria-label="Request from host">
+              <span className="ask-ic">{m.ask.kind === 'mic' ? <Mic /> : <Camera />}</span>
+              <div>
+                <strong>{m.ask.from} asks you to turn on your {m.ask.kind === 'mic' ? 'microphone' : 'camera'}</strong>
+                <span className="muted tiny">It only turns on if you accept.</span>
+              </div>
+              <div className="row-gap">
+                <button className="btn-ghost small" type="button" onClick={() => m.answerAsk(false)}>Not now</button>
+                <button className="btn-primary small" type="button" onClick={() => m.answerAsk(true)}>Turn on</button>
+              </div>
             </div>
           )}
           {toast && (
@@ -170,15 +220,18 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
                 {panel === 'people' && (
                   <PeoplePanel
                     participants={m.participants}
+                    waiting={m.waiting}
+                    roomState={m.roomState}
                     isHost={m.isHost}
-                    onMute={(id) => m.hostAction('mute', id)}
-                    onMuteAll={() => m.hostAction('muteAll')}
-                    onRemove={(id) => m.hostAction('remove', id)}
+                    can={m.can}
+                    onAct={m.hostAction}
+                    onAsk={m.askMedia}
                   />
                 )}
-                {panel === 'notes' && (
+                {panel === 'notes' && m.can('notes') && (
                   <NotesPanel
-                    isHost={m.isHost}
+                    isHost={m.can('notes')}
+                    interview={m.roomState.interview}
                     notesOn={m.notesOn}
                     onToggleNotes={m.setNotes}
                     tx={m.tx}
@@ -209,6 +262,8 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         canShare={canShare}
         sharing={m.sharingScreen}
         isHost={m.isHost}
+        canNotes={m.can('notes')}
+        waitingCount={m.can('admit') ? m.waiting.length : 0}
         notesOn={m.notesOn}
         panel={panel}
         unread={unread}
@@ -225,6 +280,9 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         onPanel={togglePanel}
         onMode={setMode}
         onCaptions={() => setCaptionsOn((v) => !v)}
+        canRecord={m.can('record')}
+        recording={rec.state === 'recording' || rec.state === 'starting'}
+        onRecord={() => (rec.state === 'recording' ? rec.stop() : rec.start(m.getMicTrack()))}
         onSettings={() => setSettings(true)}
         onCopyLink={copyLink}
       />
@@ -233,7 +291,7 @@ export default function Room({ m, roomCode, aiConfigured }: { m: Meeting; roomCo
         <AudioPlayer key={a.sid} track={a.track} />
       ))}
 
-      {settings && <SettingsDialog onClose={() => setSettings(false)} onSwitch={m.switchDevice} />}
+      {settings && <SettingsDialog onClose={() => setSettings(false)} onSwitch={m.switchDevice} canRecord={m.can('record')} />}
 
       {confirmEnd && (
         <div className="modal-back" onPointerDown={(e) => e.target === e.currentTarget && setConfirmEnd(false)}>

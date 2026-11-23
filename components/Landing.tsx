@@ -1,53 +1,138 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  BadgeCheck,
   Bot,
+  Check,
   Crown,
+  History,
+  Hourglass,
   Lightbulb,
   Loader2,
+  Lock,
+  Mic,
   MonitorSmartphone,
   ScrollText,
+  ShieldCheck,
   Sparkles,
   Star,
   Video,
+  X,
 } from 'lucide-react';
+import { readHistory, type HistoryItem } from '@/lib/profile';
 import Starfield from './Starfield';
 
 const CODE_RE = /[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
 
 const FEATURES = [
-  { icon: Star, title: 'Star-field view', body: 'The person speaking glides to the centre and everyone else orbits around them. The host wears a crown. Grid and Speaker layouts are one tap away.' },
-  { icon: Video, title: 'Clear audio, sharp video', body: 'Noise suppression and echo cancellation on every mic. Video adapts to each viewer, so a weak connection never slows down the room.' },
-  { icon: ScrollText, title: 'AI notes for interviews', body: 'A live transcript with the right name on every line, then a summary and a scorecard for each candidate with suggested scores and quotes.' },
-  { icon: Lightbulb, title: 'Host Copilot', body: 'Private to the host. Suggests the next question, tracks which topics are covered, and coaches on talk time and pacing.' },
+  { icon: Video, title: 'Clear audio, sharp video', body: 'Echo cancellation and noise suppression on every mic. Video adapts to each viewer, so one weak connection never slows the room.' },
   { icon: Bot, title: 'AI Helper in every meeting', body: 'Anyone can ask about Dense AI or how to use the meeting. It answers from Dense AI material and stays on topic.' },
-  { icon: MonitorSmartphone, title: 'Works on every device', body: 'Phones, tablets and laptops. Guests join from a link with no download, and the app can be added to the home screen.' },
+  { icon: MonitorSmartphone, title: 'Every device', body: 'Phones, tablets and laptops. Guests join from a link with no download, and the app can sit on the home screen.' },
+  { icon: Lock, title: 'You stay in control', body: 'Waiting room, meeting lock, instant removal, and a way to let someone back in. Mic and camera requests ask first.' },
+  { icon: ScrollText, title: 'Notes without typing', body: 'A live transcript with the right name on every line, kept private to the host and the people the host chooses.' },
+  { icon: Star, title: 'Profiles that feel yours', body: 'Pick a photo and a colour. Your star looks like you in every meeting.' },
 ];
 
 const STEPS = [
   { n: '1', title: 'Start a meeting', body: 'One tap creates a private room and a link to share.' },
-  { n: '2', title: 'Invite people', body: 'Anyone with the link can join from any browser.' },
-  { n: '3', title: 'Let AI take the notes', body: 'Turn on AI notes and get a summary when you are done.' },
+  { n: '2', title: 'Let people in', body: 'Use the waiting room or open the door. Lock it any time.' },
+  { n: '3', title: 'Get the notes', body: 'Turn on AI notes and read summaries and scorecards when you finish.' },
 ];
 
-const ORBS = [
-  { n: 'Meera', h: 168, x: 50, y: 50, s: 30, host: false, speaking: true },
-  { n: 'Aarav', h: 232, x: 14, y: 26, s: 15, host: true, speaking: false },
-  { n: 'Sana', h: 290, x: 83, y: 24, s: 14, host: false, speaking: false },
-  { n: 'Rohan', h: 12, x: 84, y: 74, s: 13, host: false, speaking: false },
-  { n: 'Ishita', h: 330, x: 17, y: 76, s: 13, host: false, speaking: false },
-  { n: 'Dev', h: 200, x: 50, y: 10, s: 10, host: false, speaking: false },
-  { n: 'Zoya', h: 265, x: 50, y: 91, s: 10, host: false, speaking: false },
+const DEMO = [
+  { n: 'Meera', h: 150 },
+  { n: 'Aarav', h: 28, host: true },
+  { n: 'Sana', h: 330 },
+  { n: 'Rohan', h: 12 },
+  { n: 'Ishita', h: 275 },
+  { n: 'Dev', h: 95 },
+  { n: 'Zoya', h: 172 },
 ];
+
+const ANSWERS = [
+  { q: 'What does a pangram test check?', a: 'Said it checks that every letter appears.', v: 'correct', fix: '' },
+  { q: 'How do you handle unclear guidelines?', a: 'Would guess and move on.', v: 'incorrect', fix: 'Ask the lead or reread the guideline before deciding.' },
+  { q: 'How much of your work do you review?', a: 'Spot checks about a tenth.', v: 'partial', fix: 'A tenth is fine for routine work, but high-risk items need a full check.' },
+] as const;
+
+function useReveal() {
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+    if (!('IntersectionObserver' in window)) {
+      els.forEach((e) => e.classList.add('in'));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (es) =>
+        es.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add('in');
+            io.unobserve(e.target);
+          }
+        }),
+      { threshold: 0.18 },
+    );
+    els.forEach((e) => io.observe(e));
+    return () => io.disconnect();
+  }, []);
+}
+
+/** A tiny live preview of the real thing: the speaker glides to the centre while everyone keeps drifting. */
+function Demo() {
+  const [sp, setSp] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSp((v) => (v + 1) % DEMO.length), 2600);
+    return () => clearInterval(id);
+  }, []);
+  const others = DEMO.map((_, i) => i).filter((i) => i !== sp);
+  return (
+    <div className="hero-art" aria-hidden="true">
+      <div className="art-glow" />
+      {DEMO.map((o, i) => {
+        const isC = i === sp;
+        const k = others.indexOf(i);
+        const a = -Math.PI / 2 + (k * 2 * Math.PI) / others.length + 0.3;
+        const x = isC ? 50 : 50 + Math.cos(a) * 38;
+        const y = isC ? 50 : 50 + Math.sin(a) * 36;
+        const s = isC ? 30 : 15;
+        return (
+          <div
+            key={o.n}
+            className={`art-orb${isC ? ' speaking' : ''}${o.host ? ' host' : ''}`}
+            style={{ left: `${x}%`, top: `${y}%`, width: `${s}%`, ['--h' as string]: o.h, ['--d' as string]: `${6 + (i % 4)}s`, animationDelay: `${-i * 1.3}s` } as React.CSSProperties}
+          >
+            <span>{o.n.slice(0, 2).toUpperCase()}</span>
+            {o.host && <Crown fill="currentColor" />}
+            <em>{o.n}</em>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Landing() {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [live, setLive] = useState<Record<string, boolean>>({});
+  useReveal();
+
+  useEffect(() => {
+    const h = readHistory().slice(0, 6);
+    setHistory(h);
+    if (!h.length) return;
+    fetch('/api/rooms/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes: h.map((x) => x.code) }) })
+      .then((r) => r.json())
+      .then((d) => setLive(d.live || {}))
+      .catch(() => {});
+  }, []);
 
   const create = async () => {
     setCreating(true);
@@ -90,23 +175,30 @@ export default function Landing() {
           <span>Dense Meet</span>
         </a>
         <nav className="nav-links">
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
+          <a href="#view">The view</a>
+          <a href="#interviews">Interviews</a>
+          <a href="#control">Control</a>
+          <a href="#more">More</a>
         </nav>
+        <button className="btn-ghost small" type="button" onClick={create} disabled={creating}>
+          {creating ? <Loader2 className="spin" /> : <Video />} New meeting
+        </button>
       </header>
 
       <main>
-        <section className="hero">
+        {/* Screen 1 */}
+        <section className="screen-block hero">
           <div className="hero-copy">
-            <span className="eyebrow">
+            <span className="eyebrow rise" style={{ ['--i' as string]: 0 } as React.CSSProperties}>
               <Sparkles /> Video meetings with built-in AI
             </span>
-            <h1>Meetings that listen, think and help.</h1>
-            <p>
-              Dense Meet is a video meeting platform from Dense AI. Clear calls, a star-field view that follows the conversation, and AI that takes the notes, scores interviews and coaches the host.
+            <h1 className="rise" style={{ ['--i' as string]: 1 } as React.CSSProperties}>
+              Meetings that <span className="grad">listen</span>, think and help.
+            </h1>
+            <p className="rise" style={{ ['--i' as string]: 2 } as React.CSSProperties}>
+              Dense Meet is a video meeting platform from Dense AI. Clear calls, a star-field view that follows the conversation, and AI that takes notes, scores interviews and coaches the host.
             </p>
-
-            <div className="hero-actions">
+            <div className="hero-actions rise" style={{ ['--i' as string]: 3 } as React.CSSProperties}>
               <button className="btn-primary big" type="button" onClick={create} disabled={creating}>
                 {creating ? <Loader2 className="spin" /> : <Video />} {creating ? 'Creating' : 'New meeting'}
               </button>
@@ -120,39 +212,117 @@ export default function Landing() {
             {error && <div className="notice warn" role="alert">{error}</div>}
             <p className="hero-foot">No account needed. Guests join from any browser.</p>
           </div>
+          <Demo />
+          <a className="scroll-hint" href="#view" aria-label="Scroll down">
+            <span />
+          </a>
+        </section>
 
-          <div className="hero-art" aria-hidden="true">
-            <div className="art-glow" />
-            {ORBS.map((o) => (
-              <div
-                key={o.n}
-                className={`art-orb${o.speaking ? ' speaking' : ''}${o.host ? ' host' : ''}`}
-                style={{ left: `${o.x}%`, top: `${o.y}%`, width: `${o.s}%`, ['--h' as string]: o.h, animationDelay: `${-o.h % 7}s` } as React.CSSProperties}
-              >
-                <span>{o.n.slice(0, 2).toUpperCase()}</span>
-                {o.host && <Crown fill="currentColor" />}
-                <em>{o.n}</em>
-              </div>
-            ))}
-            <svg className="art-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <line x1="50" y1="50" x2="14" y2="26" />
-              <line x1="50" y1="50" x2="83" y2="24" />
-              <line x1="50" y1="50" x2="84" y2="74" />
-            </svg>
+        {history.length > 0 && (
+          <section className="section recent" data-reveal>
+            <div className="section-head">
+              <span className="eyebrow"><History /> Your recent meetings</span>
+            </div>
+            <ul className="recent-list">
+              {history.map((h) => (
+                <li key={h.code}>
+                  <div>
+                    <strong>{h.code}</strong>
+                    <span className="muted tiny">
+                      {h.host ? 'You hosted' : 'You joined'} · {new Date(h.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                  {live[h.code] ? <span className="chip live"><i className="dot live" /> Live</span> : <span className="chip">Ended</span>}
+                  <Link className={live[h.code] ? 'btn-primary small' : 'btn-ghost small'} href={'/' + h.code}>
+                    {live[h.code] ? 'Rejoin' : h.host ? 'Start again' : 'Open'}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Screen 2 */}
+        <section id="view" className="screen-block split">
+          <div className="split-copy" data-reveal>
+            <span className="eyebrow"><Star /> The star-field view</span>
+            <h2>Whoever speaks glides to the centre.</h2>
+            <p>Everyone else keeps floating around them like stars. The host wears a crown, so you always know who is running the room. Prefer a grid or a speaker layout? One tap.</p>
+            <ul className="ticks">
+              <li><Check /> Instant, smooth movement as the conversation moves</li>
+              <li><Check /> Host and role badges you can see at a glance</li>
+              <li><Check /> Screen sharing with everyone still in view</li>
+            </ul>
+          </div>
+          <div className="split-art" data-reveal>
+            <Demo />
           </div>
         </section>
 
-        <section id="features" className="section">
-          <div className="section-head">
-            <span className="eyebrow">What you get</span>
-            <h2>Everything a serious meeting needs, and a few things it does not have anywhere else.</h2>
+        {/* Screen 3 */}
+        <section id="interviews" className="screen-block split flip">
+          <div className="split-copy" data-reveal>
+            <span className="eyebrow"><ScrollText /> Built for interviews</span>
+            <h2>Stop typing notes. Start listening.</h2>
+            <p>Turn on AI notes and get a summary for every candidate: their experience, which answers were right, which were wrong and what a correct answer would sound like. Only the host sees it, unless the host shares it.</p>
+            <ul className="ticks">
+              <li><Check /> Correctness bar for every candidate</li>
+              <li><Check /> Suggested scores that point back to what was said</li>
+              <li><Check /> Host Copilot suggests the next question</li>
+            </ul>
+          </div>
+          <div className="band-card" data-reveal aria-label="Example candidate summary">
+            <div className="band-card-head">
+              <span className="avatar" style={{ ['--h' as string]: 330 } as React.CSSProperties}>IS</span>
+              <div>
+                <strong>Ishita</strong>
+                <span>Example summary · 2 years reviewing AI answers</span>
+              </div>
+              <span className="chip live">67% correct</span>
+            </div>
+            <div className="accbar" aria-hidden="true"><i style={{ width: '67%' }} /></div>
+            <div className="answers">
+              {ANSWERS.map((a) => (
+                <div key={a.q} className={`answer ${a.v}`}>
+                  <div className="q">{a.q}</div>
+                  <div className="muted">{a.a}</div>
+                  {a.fix && <div className="fix">Correction: {a.fix}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Screen 4 */}
+        <section id="control" className="screen-block split">
+          <div className="split-copy" data-reveal>
+            <span className="eyebrow"><ShieldCheck /> The host decides</span>
+            <h2>Give people exactly the powers you want.</h2>
+            <p>Create a role like Helper or Co-interviewer and switch on only what they may do. Everyone else never sees those tools. Control the door with a waiting room or a lock, and let a removed person back in if you choose.</p>
+            <ul className="ticks">
+              <li><Check /> Custom roles with permissions per person</li>
+              <li><Check /> Waiting room, lock, instant removal, allow back</li>
+              <li><Check /> Mic and camera requests the person can accept or decline</li>
+            </ul>
+          </div>
+          <div className="role-demo" data-reveal aria-hidden="true">
+            <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 28 } as React.CSSProperties}>AA</span><b>Aarav</b><span className="tag gold"><Crown /> Host</span></div>
+            <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 172 } as React.CSSProperties}>ZO</span><b>Zoya</b><span className="tag role"><BadgeCheck /> Helper</span><Mic /></div>
+            <div className="role-row"><span className="avatar" style={{ ['--h' as string]: 12 } as React.CSSProperties}>RO</span><b>Rohan</b><span className="tag warn"><Hourglass /> Waiting</span><span className="btn-primary small">Let in</span><X /></div>
+            <div className="ask-mini"><Mic /> <span>Aarav asks you to turn on your microphone</span><span className="btn-primary small">Turn on</span></div>
+          </div>
+        </section>
+
+        {/* Screen 5 */}
+        <section id="more" className="screen-block">
+          <div className="section-head" data-reveal>
+            <span className="eyebrow"><Lightbulb /> And more</span>
+            <h2>Everything a serious meeting needs.</h2>
           </div>
           <div className="feature-grid">
-            {FEATURES.map((f) => (
-              <article key={f.title} className="feature">
-                <span className="feature-icon">
-                  <f.icon />
-                </span>
+            {FEATURES.map((f, i) => (
+              <article key={f.title} className="feature" data-reveal style={{ ['--i' as string]: i % 3 } as React.CSSProperties}>
+                <span className="feature-icon"><f.icon /></span>
                 <h3>{f.title}</h3>
                 <p>{f.body}</p>
               </article>
@@ -160,48 +330,15 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="section band">
-          <div className="band-copy">
-            <span className="eyebrow">Built for interviews and screening</span>
-            <h2>Stop typing notes. Start listening.</h2>
-            <p>
-              Turn on AI notes and everyone&apos;s own speech is transcribed in their browser, so every line carries the right name. When you finish, get a summary and a scorecard for each candidate. Scores are suggestions, and every one points back to what was said.
-            </p>
-          </div>
-          <div className="band-card" aria-label="Example scorecard">
-            <div className="band-card-head">
-              <span className="avatar" style={{ ['--h' as string]: 330 } as React.CSSProperties}>IS</span>
-              <div>
-                <strong>Ishita</strong>
-                <span>Example scorecard</span>
-              </div>
-            </div>
-            {[
-              ['Communication', 4.5],
-              ['Attention to detail', 4.0],
-              ['Guideline following', 4.5],
-              ['Availability', 3.5],
-            ].map(([k, v]) => (
-              <div className="score-row" key={String(k)}>
-                <span>{k}</span>
-                <i>
-                  <b style={{ width: `${(Number(v) / 5) * 100}%` }} />
-                </i>
-                <span className="score-num">{Number(v).toFixed(1)}</span>
-              </div>
-            ))}
-            <p className="band-quote">&ldquo;I reread the guidelines first, then spot check a tenth of my own work.&rdquo;</p>
-          </div>
-        </section>
-
-        <section id="how" className="section">
-          <div className="section-head">
+        {/* Screen 6 */}
+        <section id="how" className="screen-block short">
+          <div className="section-head" data-reveal>
             <span className="eyebrow">How it works</span>
             <h2>From link to notes in three steps.</h2>
           </div>
           <ol className="steps">
-            {STEPS.map((s) => (
-              <li key={s.n}>
+            {STEPS.map((s, i) => (
+              <li key={s.n} data-reveal style={{ ['--i' as string]: i } as React.CSSProperties}>
                 <span className="step-n">{s.n}</span>
                 <h3>{s.title}</h3>
                 <p>{s.body}</p>
@@ -210,7 +347,7 @@ export default function Landing() {
           </ol>
         </section>
 
-        <section className="section cta">
+        <section className="section cta" data-reveal>
           <h2>Ready when you are.</h2>
           <button className="btn-primary big" type="button" onClick={create} disabled={creating}>
             {creating ? <Loader2 className="spin" /> : <Video />} New meeting
@@ -219,8 +356,22 @@ export default function Landing() {
       </main>
 
       <footer className="footer">
-        <span>Dense Meet</span>
-        <span className="muted">A product of Dense AI</span>
+        <div className="footer-brand">
+          <a className="logo" href="/"><span className="logo-mark" /> Dense Meet</a>
+          <p className="muted">Video meetings with built-in AI, from Dense AI.</p>
+        </div>
+        <nav aria-label="Footer">
+          <b>Product</b>
+          <a href="#view">The view</a>
+          <a href="#interviews">Interviews</a>
+          <a href="#control">Host controls</a>
+        </nav>
+        <nav aria-label="Company">
+          <b>Company</b>
+          <a href="https://dense-ai.vercel.app" target="_blank" rel="noreferrer">Dense AI</a>
+          <a href="#how">How it works</a>
+        </nav>
+        <div className="footer-bottom">© {new Date().getFullYear()} Dense AI. All rights reserved.</div>
       </footer>
     </div>
   );

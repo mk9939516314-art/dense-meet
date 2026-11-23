@@ -1,5 +1,5 @@
 import { authMember } from '@/lib/server/auth';
-import { aiConfig, chat, type ChatMsg } from '@/lib/server/ai';
+import { AiError, aiConfig, chat, type ChatMsg } from '@/lib/server/ai';
 import { DENSE_KB } from '@/lib/server/dense-kb';
 
 export const runtime = 'nodejs';
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       maxTokens: 500,
     });
     return Response.json({ answer: answer.trim() });
-  } catch {
-    return Response.json({ error: 'ai_failed' }, { status: 502 });
+  } catch (e) {
+    return Response.json({ error: 'ai_failed', detail: e instanceof AiError ? e.detail : '' }, { status: 502 });
   }
 }

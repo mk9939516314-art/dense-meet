@@ -21,6 +21,8 @@ import {
   VideoOff,
   FileText,
   PowerOff,
+  Circle,
+  Square,
 } from 'lucide-react';
 import type { LayoutMode, PInfo } from '@/lib/types';
 import { cx } from '@/lib/util';
@@ -34,6 +36,8 @@ type Props = {
   canShare: boolean;
   sharing: boolean;
   isHost: boolean;
+  canNotes: boolean;
+  waitingCount: number;
   notesOn: boolean;
   panel: PanelId | null;
   unread: number;
@@ -51,6 +55,9 @@ type Props = {
   onMode: (m: LayoutMode) => void;
   onCaptions: () => void;
   onSettings: () => void;
+  canRecord: boolean;
+  recording: boolean;
+  onRecord: () => void;
   onCopyLink: () => Promise<boolean>;
 };
 
@@ -81,9 +88,9 @@ export default function ControlBar(p: Props) {
   };
 
   const panels: { id: PanelId; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: 'people', label: 'People', icon: <Users />, badge: p.peopleCount },
+    { id: 'people', label: 'People', icon: <Users />, badge: p.waitingCount || p.peopleCount },
     { id: 'chat', label: 'Chat', icon: <MessageSquare />, badge: p.unread },
-    { id: 'notes', label: 'AI notes', icon: <FileText /> },
+    ...(p.canNotes ? [{ id: 'notes' as PanelId, label: 'AI notes', icon: <FileText /> }] : []),
     { id: 'helper', label: 'AI Helper', icon: <Sparkles /> },
   ];
 
@@ -153,6 +160,11 @@ export default function ControlBar(p: Props) {
               <button type="button" role="menuitem" className="menu-item" onClick={() => { p.onCaptions(); setOpen(null); }}>
                 <Captions /> {p.captionsOn ? 'Hide captions' : 'Show captions'}
               </button>
+              {p.canRecord && (
+                <button type="button" role="menuitem" className="menu-item" onClick={() => { p.onRecord(); setOpen(null); }}>
+                  {p.recording ? <Square /> : <Circle />} {p.recording ? 'Stop recording' : 'Start recording'}
+                </button>
+              )}
               <button type="button" role="menuitem" className="menu-item" onClick={() => { p.onSettings(); setOpen(null); }}>
                 <Settings /> Audio and video settings
               </button>

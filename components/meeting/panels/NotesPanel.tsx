@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Download, FileText, Lightbulb, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
 import { useCopilot, useSummary, type AiError } from '@/hooks/useAi';
 import type { PInfo, TxSeg } from '@/lib/types';
@@ -23,6 +23,7 @@ type Props = {
   lang: string;
   setLang: (v: string) => void;
   interim: string;
+  interview?: boolean;
 };
 
 const LANGS = [
@@ -43,7 +44,8 @@ function errText(e: AiError) {
 
 export default function NotesPanel(p: Props) {
   const { isHost, notesOn, tx, participants, startedAt, token, configured } = p;
-  const [mode, setMode] = useState<'interview' | 'meeting'>('interview');
+  const [mode, setMode] = useState<'interview' | 'meeting'>(p.interview ? 'interview' : 'meeting');
+  useEffect(() => setMode(p.interview ? 'interview' : 'meeting'), [p.interview]);
   const [topicsText, setTopicsText] = useState(DEFAULT_TOPICS);
   const [copied, setCopied] = useState(false);
 

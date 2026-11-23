@@ -2,10 +2,13 @@ export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(' ');
 }
 
+const HUE_SET = [12, 28, 42, 150, 172, 330, 350, 275, 95, 18];
+
+/** Stable colour for a name. Skips the blue range so nothing looks like a default "AI blue". */
 export function hashHue(s: string) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h) % 360;
+  return HUE_SET[Math.abs(h) % HUE_SET.length];
 }
 
 export function initials(name: string) {

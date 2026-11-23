@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { ArrowLeft, Camera, Loader2, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { HUES, fileToAvatar, loadProfile, saveProfile } from '@/lib/profile';
 import { cx, hashHue, initials } from '@/lib/util';
 
 type Dev = { id: string; label: string };
 
-export type LobbyResult = { name: string; micOn: boolean; camOn: boolean; micId?: string; camId?: string };
+export type LobbyResult = { name: string; micOn: boolean; camOn: boolean; micId?: string; camId?: string; hue: number | null; pic: string };
 
 type Props = {
   roomCode: string;
@@ -29,14 +30,14 @@ export default function Lobby({ roomCode, isHost, busy, error, onJoin }: Props) 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [level, setLevel] = useState(0);
+  const [hueSel, setHueSel] = useState<number | null>(null);
+  const [pic, setPic] = useState('');
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('dm-name');
-      if (saved) setName(saved);
-    } catch {
-      /* storage unavailable */
-    }
+    const pr = loadProfile();
+    setName(pr.name);
+    setHueSel(pr.hue);
+    setPic(pr.pic);
   }, []);
 
   const stop = useCallback(() => {
@@ -110,16 +111,20 @@ export default function Lobby({ roomCode, isHost, busy, error, onJoin }: Props) 
 
   const join = () => {
     const n = name.trim() || (isHost ? 'Host' : 'Guest');
-    try {
-      localStorage.setItem('dm-name', n);
-    } catch {
-      /* ignore */
-    }
+    saveProfile({ name: n, hue: hueSel, pic });
     stop();
-    onJoin({ name: n, micOn, camOn, micId: micId || undefined, camId: camId || undefined });
+    onJoin({ name: n, micOn, camOn, micId: micId || undefined, camId: camId || undefined, hue: hueSel, pic });
   };
 
-  const hue = hashHue(name || 'guest');
+  const hue = hueSel ?? hashHue(name || 'guest');
+  const onPic = async (f?: File | null) => {
+    if (!f) return;
+    try {
+      setPic(await fileToAvatar(f));
+    } catch {
+      setPermNote('That image could not be read. Try a JPG or PNG.');
+    }
+  };
 
   return (
     <main className="lobby">
@@ -137,7 +142,7 @@ export default function Lobby({ roomCode, isHost, busy, error, onJoin }: Props) 
             {!camOn && (
               <div className="preview-off">
                 <span className="avatar xl" style={{ ['--h' as string]: hue } as React.CSSProperties}>
-                  {initials(name || 'Guest')}
+                  {pic ? <img src={pic} alt="" /> : initials(name || 'Guest')}
                 </span>
                 <span>Camera is off</span>
               </div>
@@ -167,6 +172,26 @@ export default function Lobby({ roomCode, isHost, busy, error, onJoin }: Props) 
             <span>Your name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter your name" maxLength={40} autoComplete="name" onKeyDown={(e) => e.key === 'Enter' && !busy && join()} />
           </label>
+
+          <div className="profile-row">
+            <label className="avatar-pick" title="Add a profile picture">
+              <span className="avatar xl" style={{ ['--h' as string]: hue } as React.CSSProperties}>
+                {pic ? <img src={pic} alt="Your profile picture" /> : initials(name || 'Guest')}
+              </span>
+              <span className="avatar-cam"><Camera /></span>
+              <input type="file" accept="image/*" hidden onChange={(e) => onPic(e.target.files?.[0])} />
+            </label>
+            <div className="swatches" role="group" aria-label="Profile colour">
+              {HUES.map((h) => (
+                <button key={h} type="button" className={cx('swatch', hueSel === h && 'on')} style={{ ['--h' as string]: h } as React.CSSProperties} onClick={() => setHueSel(h)} aria-label={`Colour ${h}`} />
+              ))}
+              {pic && (
+                <button type="button" className="btn-ghost small" onClick={() => setPic('')}>
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </div>
 
           {(mics.length > 1 || cams.length > 1) && (
             <div className="field-row">

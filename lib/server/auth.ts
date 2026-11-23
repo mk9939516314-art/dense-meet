@@ -77,3 +77,35 @@ export function authMember(req: Request, limitPerMinute = 24): { member: Member 
   hits.set(identity, list);
   return { member: { identity, name: claims.name || identity, room: claims.video.room, isHost: role === 'host' } };
 }
+
+import { RoomServiceClient } from 'livekit-server-sdk';
+import { parseMeta, parseRoomMeta, type PMeta, type RoomMeta } from '@/lib/perms';
+
+export function roomSvc() {
+  const env = livekitEnv();
+  return new RoomServiceClient(httpUrl(env.url), env.key, env.secret);
+}
+
+export async function getRoomMeta(room: string): Promise<RoomMeta> {
+  try {
+    const list = await roomSvc().listRooms([room]);
+    return parseRoomMeta(list[0]?.metadata);
+  } catch {
+    return {};
+  }
+}
+
+/** The caller's live role and permissions, read from LiveKit (the token's copy can be stale). */
+export async function callerMeta(member: Member): Promise<PMeta> {
+  if (member.isHost) return { role: 'host', status: 'in', perms: [] };
+  try {
+    const p = await roomSvc().getParticipant(member.room, member.identity);
+    return parseMeta(p.metadata);
+  } catch {
+    return { role: 'guest', status: 'in', perms: [] };
+  }
+}
+
+export function can(meta: PMeta, perm: string) {
+  return meta.role === 'host' || (meta.status !== 'waiting' && Boolean(meta.perms?.includes(perm)));
+}

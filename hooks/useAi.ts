@@ -6,12 +6,13 @@ import type { CopilotResult, MeetingSummary, TxSeg } from '@/lib/types';
 type TokenRef = { current: string };
 
 export type AiError = 'not_configured' | 'too_short' | 'failed' | 'busy' | null;
+export const AI_RETRY_NOTE = 'The AI provider returned an error. The host can open /api/ai/status?test=1 to see exactly why.';
 
 function toSegs(tx: TxSeg[], startedAt: number) {
   return tx.map((s) => ({ speaker: s.speaker, text: s.text, t: Math.max(0, s.ts - startedAt) }));
 }
 
-async function post<T>(path: string, token: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; error: AiError }> {
+async function post<T>(path: string, token: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; error: AiError; detail?: string }> {
   try {
     const res = await fetch(path, {
       method: 'POST',
@@ -22,7 +23,8 @@ async function post<T>(path: string, token: string, body: unknown): Promise<{ ok
     if (res.status === 503) return { ok: false, error: 'not_configured' };
     if (res.status === 422) return { ok: false, error: 'too_short' };
     if (res.status === 429) return { ok: false, error: 'busy' };
-    return { ok: false, error: 'failed' };
+    const j = (await res.json().catch(() => ({}))) as { detail?: string };
+    return { ok: false, error: 'failed', detail: j.detail };
   } catch {
     return { ok: false, error: 'failed' };
   }
@@ -114,6 +116,7 @@ export function useHelper(token: TokenRef) {
   const [messages, setMessages] = useState<HelperMsg[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<AiError>(null);
+  const [detail, setDetail] = useState('');
 
   const ask = useCallback(
     async (question: string) => {
@@ -125,11 +128,14 @@ export function useHelper(token: TokenRef) {
       setError(null);
       const r = await post<{ answer: string }>('/api/ai/helper', token.current, { question: q, history });
       if (r.ok) setMessages((m) => [...m, { role: 'assistant', content: r.data.answer || 'I could not find an answer to that.' }]);
-      else setError(r.error);
+      else {
+        setError(r.error);
+        setDetail(r.detail || '');
+      }
       setLoading(false);
     },
     [token, messages, loading],
   );
 
-  return { messages, loading, error, ask };
+  return { messages, loading, error, detail, ask };
 }

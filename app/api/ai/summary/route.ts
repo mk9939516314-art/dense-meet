@@ -1,5 +1,5 @@
-import { authMember } from '@/lib/server/auth';
-import { aiConfig, chat, parseJson, transcriptText, type Seg } from '@/lib/server/ai';
+import { authMember, callerMeta, can } from '@/lib/server/auth';
+import { AiError, aiConfig, chat, parseJson, transcriptText, type Seg } from '@/lib/server/ai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,15 @@ const SHAPE = `{
     "strengths": string[],                 // up to 4, each grounded in what they said
     "concerns": string[],                  // up to 3, only if supported by the transcript
     "quotes": string[],                    // up to 2 short verbatim quotes
-    "scores": { "criterion": string, "score": number, "reason": string }[]   // only when criteria are given; score 1-5
+    "scores": { "criterion": string, "score": number, "reason": string }[],  // only when criteria are given; score 1-5
+    "experience": string,                  // work experience, education, skills and past roles this person said they have; "" if none stated
+    "answers": [{                          // each question an interviewer asked this person that they answered
+      "question": string,
+      "answer": string,                    // 1-2 sentence gist of what they said
+      "verdict": "correct" | "partial" | "incorrect" | "unclear",
+      "correction": string                 // when partial/incorrect: what a correct answer would say; otherwise ""
+    }],
+    "accuracy": number                     // 0-100: share of answered questions judged correct (partial counts half); 0 if no questions
   }],
   "followUps": string[]                    // suggested follow-up questions or next steps
 }`;
@@ -24,7 +32,7 @@ const SHAPE = `{
 export async function POST(req: Request) {
   const auth = authMember(req, 8);
   if ('error' in auth) return auth.error;
-  if (!auth.member.isHost) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(await callerMeta(auth.member), 'notes')) return Response.json({ error: 'forbidden' }, { status: 403 });
   if (!aiConfig().ok) return Response.json({ error: 'ai_not_configured' }, { status: 503 });
 
   let body: { mode?: string; transcript?: Seg[]; hosts?: string[]; criteria?: string[] } = {};
@@ -46,7 +54,7 @@ Reply with ONE valid JSON object and nothing else, matching this shape:
 ${SHAPE}
 ${
   interview
-    ? `This was an interview or screening. Hosts/interviewers: ${hosts.join(', ') || 'unknown'}. In "people", include one entry per candidate (not the interviewers).${
+    ? `This was an interview or screening. Hosts/interviewers: ${hosts.join(', ') || 'unknown'}. In "people", include one entry per candidate (not the interviewers). For "answers", judge each answer only against well-established facts, the interviewer's own stated expectations in the transcript, or the given criteria; use verdict "unclear" whenever correctness cannot be judged from what is available, and never invent a correction you are not sure of.${
         criteria.length ? ` Score each candidate on these criteria from 1 to 5: ${criteria.join(', ')}. Scores are suggestions for the host, each with a one-sentence reason.` : ' Leave "scores" as an empty array.'
       }`
     : 'This was a general meeting. In "people", include one entry per participant who spoke meaningfully. Leave "scores" as an empty array.'
@@ -64,7 +72,7 @@ Write in the language mostly used in the transcript (English unless it is clearl
     const parsed = parseJson<Record<string, unknown>>(out);
     if (!parsed) return Response.json({ error: 'ai_bad_output' }, { status: 502 });
     return Response.json({ result: parsed });
-  } catch {
-    return Response.json({ error: 'ai_failed' }, { status: 502 });
+  } catch (e) {
+    return Response.json({ error: 'ai_failed', detail: e instanceof AiError ? e.detail : '' }, { status: 502 });
   }
 }

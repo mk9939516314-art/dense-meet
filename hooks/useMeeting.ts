@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DisconnectReason, Room, RoomEvent, Track, VideoPresets, type Participant } from 'livekit-client';
-import type { ChatItem, PInfo, ReactionItem, TxSeg } from '@/lib/types';
+import type { ChatItem, PInfo, ReactionItem, RoomState, TxSeg } from '@/lib/types';
+import { parseMeta, parseRoomMeta } from '@/lib/perms';
 import { uid } from '@/lib/util';
 
 export type Phase = 'idle' | 'connecting' | 'live' | 'ended';
-export type EndReason = 'left' | 'removed' | 'ended' | 'error';
+export type EndReason = 'left' | 'removed' | 'ended' | 'error' | 'locked';
+export type MediaAsk = { kind: 'mic' | 'cam'; from: string; id: string };
 
 export type JoinParams = {
   token: string;
@@ -17,18 +19,15 @@ export type JoinParams = {
   camId?: string;
 };
 
+const NO_ROOM: RoomState = { wait: false, locked: false, interview: false };
+
 export type AudioTrackRef = { sid: string; track: Track };
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 function snap(p: Participant): PInfo {
-  let role = '';
-  try {
-    role = p.metadata ? JSON.parse(p.metadata).role : '';
-  } catch {
-    role = '';
-  }
+  const meta = parseMeta(p.metadata);
   const cam = p.getTrackPublication(Track.Source.Camera);
   const mic = p.getTrackPublication(Track.Source.Microphone);
   const scr = p.getTrackPublication(Track.Source.ScreenShare);
@@ -36,7 +35,13 @@ function snap(p: Participant): PInfo {
     identity: p.identity,
     name: p.name || 'Guest',
     isLocal: p.isLocal,
-    isHost: role === 'host',
+    isHost: meta.role === 'host',
+    status: meta.status === 'waiting' ? 'waiting' : 'in',
+    blocked: Boolean(meta.blocked),
+    label: meta.label,
+    perms: meta.perms || [],
+    hue: meta.hue,
+    pic: meta.pic,
     speaking: p.isSpeaking,
     level: p.audioLevel,
     micOn: Boolean(mic && !mic.isMuted),
@@ -52,6 +57,9 @@ export function useMeeting() {
   const roomRef = useRef<Room | null>(null);
   const tokenRef = useRef('');
   const leavingRef = useRef(false);
+  const wantRef = useRef({ mic: false, cam: false });
+  const wasWaitingRef = useRef(false);
+  const kickedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [phase, setPhase] = useState<Phase>('idle');
@@ -65,6 +73,10 @@ export function useMeeting() {
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
+  const [roomState, setRoomState] = useState<RoomState>(NO_ROOM);
+  const [ask, setAsk] = useState<MediaAsk | null>(null);
+  const [recording, setRecordingState] = useState(false);
+  const [waitingToast, setWaitingToast] = useState<string | null>(null);
 
   const bump = useCallback(() => {
     if (timerRef.current) return;
@@ -74,10 +86,12 @@ export function useMeeting() {
     }, 60);
   }, []);
 
-  const send = useCallback((topic: string, obj: unknown) => {
+  const send = useCallback((topic: string, obj: unknown, to?: string[]) => {
     const r = roomRef.current;
     if (!r) return;
-    r.localParticipant.publishData(enc.encode(JSON.stringify(obj)), { reliable: true, topic }).catch(() => {});
+    r.localParticipant
+      .publishData(enc.encode(JSON.stringify(obj)), { reliable: true, topic, ...(to ? { destinationIdentities: to } : {}) })
+      .catch(() => {});
   }, []);
 
   const join = useCallback(
@@ -87,6 +101,9 @@ export function useMeeting() {
       tokenRef.current = params.token;
       setPhase('connecting');
       setMediaNote(null);
+      wantRef.current = { mic: params.micOn, cam: params.camOn };
+      wasWaitingRef.current = false;
+      kickedRef.current = false;
 
       const room = new Room({
         adaptiveStream: true,
@@ -122,9 +139,12 @@ export function useMeeting() {
         RoomEvent.ParticipantMetadataChanged,
         RoomEvent.TrackPublished,
         RoomEvent.TrackUnpublished,
+        RoomEvent.ParticipantPermissionsChanged,
       ];
       events.forEach((ev) => (room as unknown as { on: (e: unknown, f: () => void) => void }).on(ev, sync));
 
+      const readRoom = () => setRoomState(room.metadata ? { ...NO_ROOM, ...parseRoomMeta(room.metadata) } as RoomState : NO_ROOM);
+      room.on(RoomEvent.RoomMetadataChanged, readRoom);
       room.on(RoomEvent.Reconnecting, () => setReconnecting(true));
       room.on(RoomEvent.Reconnected, () => {
         setReconnecting(false);
@@ -137,7 +157,7 @@ export function useMeeting() {
         setEndReason(
           leavingRef.current
             ? 'left'
-            : reason === DisconnectReason.PARTICIPANT_REMOVED
+            : kickedRef.current || reason === DisconnectReason.PARTICIPANT_REMOVED
               ? 'removed'
               : reason === DisconnectReason.ROOM_DELETED
                 ? 'ended'
@@ -171,12 +191,26 @@ export function useMeeting() {
           if (!text) return;
           setTx((l) => [...l.slice(-1500), { id: String(m.id || uid()), identity: info.identity, speaker: info.name, text, ts: Number(m.ts) || Date.now() }]);
         } else if (topic === 'notes') {
-          if (info.isHost) setNotesOnState(Boolean(m.on));
+          if (info.isHost || info.perms.includes('notes')) setNotesOnState(Boolean(m.on));
+        } else if (topic === 'rec') {
+          if (info.isHost || info.perms.includes('record')) setRecordingState(Boolean(m.on));
+        } else if (topic === 'kick') {
+          // Instant removal: the sender must be a host or someone with the remove permission (read from the server-set metadata).
+          if (info.isHost || info.perms.includes('kick')) {
+            kickedRef.current = true;
+            room.disconnect();
+          }
+        } else if (topic === 'ask') {
+          if ((info.isHost || info.perms.includes('mute')) && (m.kind === 'mic' || m.kind === 'cam')) {
+            setAsk({ kind: m.kind, from: info.name, id: uid() });
+          }
         }
       });
 
       try {
         await room.connect(params.url, params.token);
+        readRoom();
+        wasWaitingRef.current = parseMeta(room.localParticipant.metadata).status === 'waiting';
       } catch {
         roomRef.current = null;
         setEndReason('error');
@@ -190,6 +224,10 @@ export function useMeeting() {
         setAudioBlocked(true);
       }
       setPhase('live');
+      if (wasWaitingRef.current) {
+        bump();
+        return;
+      }
       if (params.micOn) {
         try {
           await room.localParticipant.setMicrophoneEnabled(true);
@@ -216,8 +254,11 @@ export function useMeeting() {
     setTx([]);
     setReactions([]);
     setNotesOnState(false);
+    setRecordingState(false);
     setAudioBlocked(false);
     setMediaNote(null);
+    setRoomState(NO_ROOM);
+    setAsk(null);
   }, []);
 
   const leave = useCallback(() => {
@@ -239,6 +280,10 @@ export function useMeeting() {
   const toggleMic = useCallback(async () => {
     const lp = roomRef.current?.localParticipant;
     if (!lp) return;
+    if (parseMeta(lp.metadata).status === 'waiting') {
+      wantRef.current.mic = !wantRef.current.mic;
+      return;
+    }
     try {
       await lp.setMicrophoneEnabled(!lp.isMicrophoneEnabled);
     } catch {
@@ -250,6 +295,10 @@ export function useMeeting() {
   const toggleCam = useCallback(async () => {
     const lp = roomRef.current?.localParticipant;
     if (!lp) return;
+    if (parseMeta(lp.metadata).status === 'waiting') {
+      wantRef.current.cam = !wantRef.current.cam;
+      return;
+    }
     try {
       await lp.setCameraEnabled(!lp.isCameraEnabled);
     } catch {
@@ -272,7 +321,12 @@ export function useMeeting() {
   const toggleHand = useCallback(async () => {
     const lp = roomRef.current?.localParticipant;
     if (!lp) return;
-    await lp.setAttributes({ hand: lp.attributes?.hand === '1' ? '0' : '1' }).catch(() => {});
+    const next = lp.attributes?.hand === '1' ? '0' : '1';
+    try {
+      await lp.setAttributes({ hand: next });
+    } catch {
+      setMediaNote('Could not raise your hand. Check your connection and try again.');
+    }
     bump();
   }, [bump]);
 
@@ -312,6 +366,16 @@ export function useMeeting() {
     [send],
   );
 
+  const setRecording = useCallback(
+    (on: boolean) => {
+      setRecordingState(on);
+      send('rec', { on });
+    },
+    [send],
+  );
+
+  const getMicTrack = useCallback(() => roomRef.current?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack ?? null, []);
+
   const setNotes = useCallback(
     (on: boolean) => {
       setNotesOnState(on);
@@ -330,18 +394,46 @@ export function useMeeting() {
     }
   }, []);
 
-  const hostAction = useCallback(async (action: 'mute' | 'muteAll' | 'remove' | 'end', target?: string) => {
-    try {
-      const res = await fetch('/api/host', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` },
-        body: JSON.stringify({ action, target }),
-      });
-      return res.ok;
-    } catch {
-      return false;
-    }
-  }, []);
+  const hostAction = useCallback(
+    async (action: string, target?: string, extra?: Record<string, unknown>) => {
+      // Removal is instant: tell the person directly first, then let the server make it permanent.
+      if (action === 'remove' && target) send('kick', { t: Date.now() }, [target]);
+      try {
+        const res = await fetch('/api/host', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` },
+          body: JSON.stringify({ action, target, ...extra }),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+    [send],
+  );
+
+  /** Ask someone to turn their mic or camera on. They get a prompt and decide. */
+  const askMedia = useCallback(
+    (target: string, kind: 'mic' | 'cam') => send('ask', { kind }, [target]),
+    [send],
+  );
+
+  const answerAsk = useCallback(
+    async (accept: boolean) => {
+      const a = ask;
+      setAsk(null);
+      if (!accept || !a) return;
+      const lp = roomRef.current?.localParticipant;
+      try {
+        if (a.kind === 'mic') await lp?.setMicrophoneEnabled(true);
+        else await lp?.setCameraEnabled(true);
+      } catch {
+        setMediaNote('That device is blocked. Allow it in your browser.');
+      }
+      bump();
+    },
+    [ask, bump],
+  );
 
   const participants = useMemo<PInfo[]>(() => {
     const r = roomRef.current;
@@ -365,6 +457,34 @@ export function useMeeting() {
   }, [tick, phase]);
 
   const me = participants.find((p) => p.isLocal);
+
+  // The moment the host lets this person in, switch on the mic and camera they chose in the lobby.
+  const myStatus = me?.status;
+  useEffect(() => {
+    if (myStatus === 'waiting') wasWaitingRef.current = true;
+    if (myStatus === 'in' && wasWaitingRef.current) {
+      wasWaitingRef.current = false;
+      const lp = roomRef.current?.localParticipant;
+      if (!lp) return;
+      if (wantRef.current.mic) lp.setMicrophoneEnabled(true).catch(() => {});
+      if (wantRef.current.cam) lp.setCameraEnabled(true).catch(() => {});
+      setStartedAt(Date.now());
+    }
+  }, [myStatus]);
+
+  // Only people who are in the meeting appear on stage; waiting people are listed for the host.
+  const inRoom = useMemo(() => participants.filter((p) => p.status === 'in' || p.isLocal), [participants]);
+  const waiting = useMemo(() => participants.filter((p) => p.status === 'waiting' && !p.isLocal), [participants]);
+
+  const waitingKey = waiting.map((w) => w.identity).join(',');
+  useEffect(() => {
+    if (!waiting.length) return setWaitingToast(null);
+    const w = waiting[waiting.length - 1];
+    setWaitingToast(`${w.name} is waiting to join${w.blocked ? ' (removed earlier)' : ''}`);
+    const id = setTimeout(() => setWaitingToast(null), 6000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingKey]);
   const sharingScreen = Boolean(me?.screen);
 
   return {
@@ -372,15 +492,27 @@ export function useMeeting() {
     endReason,
     mediaNote,
     clearMediaNote: () => setMediaNote(null),
-    participants,
+    participants: inRoom,
+    waiting,
+    roomState,
+    ask,
+    answerAsk,
+    askMedia,
+    waitingToast,
     audioTracks,
     me,
     isHost: Boolean(me?.isHost),
+    perms: me?.perms ?? [],
+    can: (perm: string) => Boolean(me?.isHost || me?.perms.includes(perm)),
+    isWaiting: me?.status === 'waiting',
     sharingScreen,
     chat,
     tx,
     reactions,
     notesOn,
+    recording,
+    setRecording,
+    getMicTrack,
     audioBlocked,
     reconnecting,
     startedAt,

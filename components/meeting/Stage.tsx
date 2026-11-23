@@ -47,7 +47,7 @@ export default function Stage({ participants, mode, pinned, onPin, reactions, bo
       next = pinned;
     } else {
       const top = participants.filter((p) => p.speaking).sort((a, b) => b.level - a.level)[0];
-      if (top && top.identity !== centerId && now - centerSince.current > 1500) next = top.identity;
+      if (top && top.identity !== centerId && now - centerSince.current > 650) next = top.identity;
       if (!next || !ids.has(next)) {
         const fallback = participants.find((p) => !p.isLocal) || participants[0];
         next = fallback ? fallback.identity : '';

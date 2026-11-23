@@ -16,7 +16,7 @@ type Props = {
 };
 
 export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
-  const hue = hashHue(p.name);
+  const hue = p.hue ?? hashHue(p.name);
   const size = Math.min(box.w, box.h);
   const style = {
     transform: `translate3d(${Math.round(box.x)}px, ${Math.round(box.y)}px, 0)`,
@@ -25,6 +25,14 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
     '--s': `${Math.round(size)}px`,
     '--h': hue,
     '--lvl': p.speaking ? Math.min(1, p.level * 1.6).toFixed(2) : 0,
+  } as CSSProperties;
+  const seed = hashHue(p.identity + 'x') + (p.identity.charCodeAt(0) || 0);
+  const amp = box.shape === 'tile' ? 0 : Math.max(4, Math.min(16, size * 0.07));
+  const floatStyle = {
+    animationDelay: `${-(seed % 11)}s`,
+    '--dur': `${7 + (seed % 7)}s`,
+    '--dx': `${((seed % 2 ? 1 : -1) * amp).toFixed(1)}px`,
+    '--dy': `${(((seed >> 1) % 2 ? 1 : -1) * amp * 0.8).toFixed(1)}px`,
   } as CSSProperties;
 
   const label = `${p.name}${p.isLocal ? ' (you)' : ''}${p.isHost ? ', host' : ''}${p.micOn ? '' : ', muted'}`;
@@ -53,10 +61,10 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
         }
       }}
     >
-      <div className="orb-float" style={{ animationDelay: `${-(hue % 9)}s` }}>
+      <div className="orb-float" style={floatStyle}>
         <div className="orb-ring" />
         <div className="orb-face">
-          {showVideo ? <VideoView track={p.cam!} mirror={p.isLocal} /> : <span className="orb-initials">{initials(p.name)}</span>}
+          {showVideo ? <VideoView track={p.cam!} mirror={p.isLocal} /> : (p.pic ? <img className="orb-pic" src={p.pic} alt="" /> : <span className="orb-initials">{initials(p.name)}</span>)}
         </div>
         {p.isHost && (
           <div className="orb-crown" title="Host">
@@ -66,6 +74,7 @@ export default function Orb({ p, box, pinned, withVideo, onClick }: Props) {
         <div className="orb-name">
           <span className="orb-name-text">{p.isLocal ? 'You' : p.name}</span>
           {p.isHost && <em>Host</em>}
+          {!p.isHost && p.label && <em className="role">{p.label}</em>}
         </div>
         <div className="orb-badges">
           {pinned && (

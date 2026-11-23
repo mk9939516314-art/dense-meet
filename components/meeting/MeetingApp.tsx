@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useMeeting } from '@/hooks/useMeeting';
 import { useAiStatus } from '@/hooks/useAi';
 import Starfield from '../Starfield';
+import { getCid, pushHistory } from '@/lib/profile';
 import EndedScreen from './EndedScreen';
 import Lobby, { type LobbyResult } from './Lobby';
 import Room from './Room';
@@ -37,10 +38,15 @@ export default function MeetingApp({ room }: { room: string }) {
         const res = await fetch('/api/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room: code, name: r.name, hostProof }),
+          body: JSON.stringify({ room: code, name: r.name, hostProof, cid: getCid(), hue: r.hue ?? undefined, pic: r.pic || undefined }),
         });
         if (res.status === 503) {
           setError('Meetings are not set up yet. The server is missing its video keys.');
+          setBusy(false);
+          return;
+        }
+        if (res.status === 403) {
+          setError('The host has locked this meeting. Ask them to unlock it, then try again.');
           setBusy(false);
           return;
         }
@@ -50,6 +56,7 @@ export default function MeetingApp({ room }: { room: string }) {
           return;
         }
         const data = (await res.json()) as { token: string; url: string };
+        pushHistory({ code, at: Date.now(), host: Boolean(hostProof) });
         await m.join({ token: data.token, url: data.url, micOn: r.micOn, camOn: r.camOn, micId: r.micId, camId: r.camId });
       } catch {
         setError('Network problem. Check your internet and try again.');

@@ -1,5 +1,5 @@
-import { authMember } from '@/lib/server/auth';
-import { aiConfig, chat, parseJson, transcriptText, type Seg } from '@/lib/server/ai';
+import { authMember, callerMeta, can } from '@/lib/server/auth';
+import { AiError, aiConfig, chat, parseJson, transcriptText, type Seg } from '@/lib/server/ai';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
   const auth = authMember(req, 12);
   if ('error' in auth) return auth.error;
-  if (!auth.member.isHost) return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(await callerMeta(auth.member), 'copilot')) return Response.json({ error: 'forbidden' }, { status: 403 });
   if (!aiConfig().ok) return Response.json({ error: 'ai_not_configured' }, { status: 503 });
 
   let body: { transcript?: Seg[]; topics?: string[]; elapsedMin?: number; hosts?: string[] } = {};
@@ -47,7 +47,7 @@ Be concrete and brief. Never invent what people said. Match the language of the 
     const parsed = parseJson<Record<string, unknown>>(out);
     if (!parsed) return Response.json({ error: 'ai_bad_output' }, { status: 502 });
     return Response.json({ result: parsed });
-  } catch {
-    return Response.json({ error: 'ai_failed' }, { status: 502 });
+  } catch (e) {
+    return Response.json({ error: 'ai_failed', detail: e instanceof AiError ? e.detail : '' }, { status: 502 });
   }
 }
