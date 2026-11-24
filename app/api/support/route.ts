@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { allow, clientIp } from '@/lib/server/limit';
+import { addMsg, ensureSess, getSess, saveSess, saveTicket, SID_RE } from '@/lib/server/support';
 
 export const runtime = 'nodejs';
+export const preferredRegion = 'bom1';
 
 const TO = (process.env.SUPPORT_TO || 'densee.ai@gmail.com').trim();
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -60,7 +62,7 @@ export async function POST(req: Request) {
   if (!allow('support:' + clientIp(req), 5, 60 * 60_000)) {
     return NextResponse.json({ error: 'rate', detail: 'Too many requests from this device. Try again in a while.' }, { status: 429 });
   }
-  let b: Partial<Fields>;
+  let b: Partial<Fields> & { sid?: string };
   try {
     b = await req.json();
   } catch {
@@ -87,6 +89,22 @@ export async function POST(req: Request) {
     } catch {
       /* try the next route */
     }
+  }
+  // Keep the ticket for the admin page and tie it to the chat it came from.
+  const sid = b.sid && SID_RE.test(b.sid) ? b.sid : '';
+  try {
+    await saveTicket({ token: t, ...f, sid, at: Date.now(), status: 'open', note: '', sent });
+    if (sid) {
+      const s = await ensureSess(sid, f.page);
+      const cur = (await getSess(sid)) || s;
+      if (f.name) cur.name = f.name;
+      if (f.email) cur.email = f.email;
+      cur.ticket = t;
+      await saveSess(cur);
+      await addMsg(sid, 'system', `Support token ${t} created${f.topic ? ': ' + f.topic : ''}.`, undefined, true);
+    }
+  } catch {
+    /* the token and the email still work without the store */
   }
   const mailto = `mailto:${TO}?subject=${encodeURIComponent(`[${t}] ${f.topic || 'Support request'}`)}&body=${encodeURIComponent(`Token: ${t}\nName: ${f.name}\nEmail: ${f.email}\n\n${f.message}`)}`;
   return NextResponse.json({ token: t, sent, to: TO, mailto });

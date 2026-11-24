@@ -39,3 +39,9 @@ Add these in Vercel > Settings > Environment Variables, then redeploy:
 | `SUPPORT_TO` | Default `densee.ai@gmail.com` |
 
 Without `RESEND_API_KEY`, FormSubmit is used: the first request makes FormSubmit email an activation link to the inbox; click it once. If neither can send, the user still gets the token plus a one-tap email button.
+
+## Support & Admin
+- Hidden admin panel at `/admin` (not linked anywhere). Default login `mayank` / `kumar@146`; override with `ADMIN_USER`, `ADMIN_PASSWORD`, `ADMIN_SECRET`.
+- Create a free Upstash Redis DB (Mumbai) and set `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. Without it, state is in-memory and unreliable on Vercel.
+- Chat users can ask for a human: admin gets a 60 s request (admin page must be open); accept = live chat, decline/timeout = bot resumes.
+- Bot knowledge: live fetch of `DENSE_SITE_URL` + editable "Bot brain" notes in admin.

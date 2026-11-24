@@ -37,9 +37,11 @@ async function listModels(cfg: ReturnType<typeof chatConfig>) {
 function rank(id: string) {
   const s = id.toLowerCase();
   let n = 0;
-  if (/gpt-5|gpt-4\.1|gpt-4o|claude|gemini|llama-?3\.[1-9]|llama-?4|deepseek|qwen|mistral|grok/.test(s)) n += 4;
-  if (/chat|instruct|turbo|flash|sonnet|haiku/.test(s)) n += 2;
-  if (/mini|nano|lite/.test(s)) n -= 1;
+  // Speed matters most in a chat widget: prefer small, fast models of the good families.
+  if (/gpt-5|gpt-4\.1|gpt-4o|claude|gemini|llama-?3\.[1-9]|llama-?4|deepseek|qwen|mistral|grok/.test(s)) n += 3;
+  if (/flash|mini|haiku|instant|turbo|nano|small|8b|9b|lite/.test(s)) n += 4;
+  if (/chat|instruct/.test(s)) n += 1;
+  if (/opus|ultra|pro\b|405b|120b|70b|reason|think|o1|o3|r1/.test(s)) n -= 4;
   if (/preview|exp|beta|old/.test(s)) n -= 1;
   return n;
 }
@@ -67,7 +69,7 @@ async function detail(res: Response) {
 }
 
 async function open(cfg: ReturnType<typeof chatConfig>, model: string, messages: ChatTurn[], signal: AbortSignal, stream: boolean) {
-  const body: Record<string, unknown> = { model, messages, temperature: 0.5, max_tokens: 1600, stream };
+  const body: Record<string, unknown> = { model, messages, temperature: 0.4, max_tokens: 900, stream };
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 60_000);
   const onAbort = () => ctl.abort();

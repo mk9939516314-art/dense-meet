@@ -28,6 +28,17 @@ Controlled access, role-based workflows, audits, secure delivery, handling requi
 PILOT TO PRODUCTION
 Four phases: Define, Pilot, Validate, Scale.
 
+LEADERSHIP (from the Dense AI website)
+- Anikesh Aman: Co-Founder and CEO (technology, data and product).
+- Arpita: Co-Founder and COO (operations and workforce).
+The website lists only these two founders.
+
+CONTACT
+- Email: densee.ai@gmail.com. Projects start through the contact form on the website (project type, data type, volume, languages, timeline, quality needs).
+- LinkedIn company page: linkedin.com/company/densee-ai
+- Website: dense-ai.vercel.app (pages: services with subpages for each service, workforce, quality, about, FAQ, privacy, terms).
+- Contributors can sign up through the WhatsApp group linked on the website.
+
 WHY DENSE AI
 Human-centered, operationally managed, flexible, and quality-focused.
 
