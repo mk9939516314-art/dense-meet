@@ -14,12 +14,12 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });
   }
-  const ok = checkLogin(String(b.user || '').slice(0, 60), String(b.pass || '').slice(0, 120));
-  if (!ok) {
+  const who = checkLogin(String(b.user || '').slice(0, 60), String(b.pass || '').slice(0, 120));
+  if (!who) {
     await new Promise((r) => setTimeout(r, 700));
     return NextResponse.json({ error: 'invalid', detail: 'Wrong ID or password.' }, { status: 401 });
   }
   const res = NextResponse.json({ ok: true });
-  res.headers.append('Set-Cookie', sessionCookie(makeSession()));
+  res.headers.append('Set-Cookie', sessionCookie(makeSession(who)));
   return res;
 }

@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });
   }
-  const me = agentName();
+  const me = agentName(req);
   try {
     switch (b.action) {
       case 'accept': {

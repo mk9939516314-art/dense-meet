@@ -17,20 +17,32 @@ const eq = (a: string, b: string) => {
 
 export const adminUser = () => (process.env.ADMIN_USER || DEFAULT_USER).trim();
 
-export function checkLogin(user: string, pass: string) {
-  const u = eq(user.trim().toLowerCase(), adminUser().toLowerCase());
+// Extra executives (password stored only as hash).
+const EXEC_HASH = '69ef4f2848c4b3f259948e5424b1aec270b2972734f996d2776972c5a93e7463';
+const EXECS = ['anikesh', 'arpita'];
+
+// Returns the canonical lowercase user id on success, else null.
+export function checkLogin(user: string, pass: string): string | null {
+  const name = user.trim().toLowerCase();
+  const main = adminUser().toLowerCase();
   const envPass = process.env.ADMIN_PASSWORD;
-  const p = envPass ? eq(pass, envPass) : eq(sha('dm-admin-v1:' + pass), DEFAULT_HASH);
-  return u && p;
+  const passHash = sha('dm-admin-v1:' + pass);
+  if (eq(name, main)) {
+    const ok = envPass ? eq(pass, envPass) : eq(passHash, DEFAULT_HASH);
+    return ok ? main : null;
+  }
+  const ex = EXECS.find((e) => eq(name, e));
+  if (ex && eq(passHash, EXEC_HASH)) return ex;
+  return null;
 }
 
 function secret() {
   return process.env.ADMIN_SECRET || sha('dm-admin-secret:' + (process.env.ADMIN_PASSWORD || DEFAULT_HASH) + (process.env.LIVEKIT_API_SECRET || ''));
 }
 
-export function makeSession() {
+export function makeSession(user: string) {
   const exp = Math.floor(Date.now() / 1000) + TTL;
-  const body = `${adminUser()}.${exp}`;
+  const body = `${user}.${exp}`;
   return `${body}.${createHmac('sha256', secret()).update(body).digest('base64url')}`;
 }
 
@@ -39,21 +51,23 @@ export function sessionCookie(value: string, clear = false) {
   return `${COOKIE}=${clear ? '' : value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear ? 0 : TTL}${secure}`;
 }
 
-export function isAdmin(req: Request) {
+export const isAdmin = (req: Request) => !!sessionUser(req);
+
+export function sessionUser(req: Request): string {
   const raw = (req.headers.get('cookie') || '').split(';').map((s) => s.trim()).find((s) => s.startsWith(COOKIE + '='));
-  if (!raw) return false;
+  if (!raw) return '';
   const v = raw.slice(COOKIE.length + 1);
   const i = v.lastIndexOf('.');
-  if (i < 0) return false;
+  if (i < 0) return '';
   const body = v.slice(0, i);
   const sig = v.slice(i + 1);
   const exp = Number(body.split('.').pop());
-  if (!exp || exp < Date.now() / 1000) return false;
+  if (!exp || exp < Date.now() / 1000) return '';
   const want = createHmac('sha256', secret()).update(body).digest('base64url');
-  return sig.length === want.length && timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+  return sig.length === want.length && timingSafeEqual(Buffer.from(sig), Buffer.from(want)) ? body.slice(0, body.lastIndexOf('.')) : '';
 }
 
-export const agentName = () => {
-  const u = adminUser();
+export const agentName = (req?: Request) => {
+  const u = (req && sessionUser(req)) || adminUser();
   return u.charAt(0).toUpperCase() + u.slice(1);
 };
