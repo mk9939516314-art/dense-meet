@@ -6,6 +6,7 @@ import { ArrowLeft, Download, FileText, History as HistoryIcon, Trash2 } from 'l
 import type { MeetingSummary } from '@/lib/types';
 import { readHistory, readNotes, type HistoryItem } from '@/lib/profile';
 import Starfield from './Starfield';
+import ChatWidget from './ChatWidget';
 import SummaryView, { summaryToMarkdown } from './meeting/panels/SummaryView';
 
 /** Every meeting this device took part in. Running meetings can be rejoined; saved AI notes can be read again. */
@@ -131,6 +132,7 @@ export default function HistoryView() {
           </section>
         )}
       </div>
+      <ChatWidget page="history" />
     </div>
   );
 }

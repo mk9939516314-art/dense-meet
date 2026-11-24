@@ -32,7 +32,7 @@ WHY DENSE AI
 Human-centered, operationally managed, flexible, and quality-focused.
 
 DENSE MEET (this app)
-- The active speaker moves to the centre of the star-field view and recent speakers orbit around them. The host has a gold crown and a HOST badge.
+- The active speaker moves to the centre of the star-field view and recent speakers orbit around them. The host has a gold HOST tag.
 - Layouts: Star, Grid, Speaker. Screen sharing switches to a presentation layout automatically.
 - Everyone can chat, raise a hand, and send reactions.
 - The host can turn on AI Notes. When on, each person's own speech is transcribed in their browser and shared as a live transcript with their name on it.

@@ -23,3 +23,19 @@ Recording happens inside the page (the stage is drawn to a canvas and every voic
 - LiveKit free plan has a monthly participant-minute cap.
 - Transcription uses the browser speech API (Chrome, Edge and Safari work best).
 - Keep the meeting tab open while recording. On a phone keep the screen on (the app asks the phone to stay awake).
+
+## Chatbot and support tokens
+
+The floating chat button (home and history pages) is a full assistant: it answers anything, explains every Dense Meet feature, can start or join a meeting for the user, and can raise a **support token** that is emailed to densee.ai@gmail.com.
+
+Add these in Vercel > Settings > Environment Variables, then redeploy:
+
+| Variable | What |
+|---|---|
+| `CHAT_API_KEY` | Key for the chatbot's own provider (any OpenAI-compatible API) |
+| `CHAT_BASE_URL` | Default `https://freemodel.in/v1` |
+| `CHAT_MODEL` | Optional. Empty = the server picks a model the provider offers |
+| `RESEND_API_KEY` | Optional but best for email delivery (resend.com, free) |
+| `SUPPORT_TO` | Default `densee.ai@gmail.com` |
+
+Without `RESEND_API_KEY`, FormSubmit is used: the first request makes FormSubmit email an activation link to the inbox; click it once. If neither can send, the user still gets the token plus a one-tap email button.

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { readHistory, type HistoryItem } from '@/lib/profile';
 import SettingsModal from './SettingsModal';
+import ChatWidget from './ChatWidget';
 import Starfield from './Starfield';
 
 const CODE_RE = /[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
@@ -62,23 +63,36 @@ const ANSWERS = [
 
 function useReveal() {
   useEffect(() => {
-    const els = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+    const reveal = (e: Element) => e.classList.add('in');
     if (!('IntersectionObserver' in window)) {
-      els.forEach((e) => e.classList.add('in'));
+      document.querySelectorAll('[data-reveal]').forEach(reveal);
       return;
     }
+    const seen = new WeakSet<Element>();
     const io = new IntersectionObserver(
       (es) =>
         es.forEach((e) => {
           if (e.isIntersecting) {
-            e.target.classList.add('in');
+            reveal(e.target);
             io.unobserve(e.target);
           }
         }),
-      { threshold: 0.18 },
+      { threshold: 0.05, rootMargin: '0px 0px -4% 0px' },
     );
-    els.forEach((e) => io.observe(e));
-    return () => io.disconnect();
+    const scan = () =>
+      document.querySelectorAll('[data-reveal]:not(.in)').forEach((e) => {
+        if (seen.has(e)) return;
+        seen.add(e);
+        io.observe(e);
+      });
+    scan();
+    // Sections that appear later (like your recent meetings, loaded after the page) must be revealed too.
+    const mo = new MutationObserver(scan);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      mo.disconnect();
+      io.disconnect();
+    };
   }, []);
 }
 
@@ -124,6 +138,11 @@ export default function Landing() {
   const [settings, setSettings] = useState(false);
   const [live, setLive] = useState<Record<string, boolean>>({});
   useReveal();
+  useEffect(() => {
+    const o = () => setSettings(true);
+    window.addEventListener('dm-open-settings', o);
+    return () => window.removeEventListener('dm-open-settings', o);
+  }, []);
 
   useEffect(() => {
     const h = readHistory().slice(0, 6);
@@ -366,6 +385,7 @@ export default function Landing() {
       </main>
 
       {settings && <SettingsModal onClose={() => setSettings(false)} />}
+      <ChatWidget page="home" />
       <footer className="footer">
         <div className="footer-brand">
           <a className="logo" href="/"><img className="logo-mark" src="/logo.png" alt="" width={32} height={32} /> Dense Meet</a>
@@ -382,6 +402,7 @@ export default function Landing() {
           <a href="https://dense-ai.vercel.app" target="_blank" rel="noreferrer">Dense AI</a>
           <a href="#how">How it works</a>
           <Link href="/history">History</Link>
+          <button type="button" className="link-btn" onClick={() => window.dispatchEvent(new Event('dm-chat-open'))}>Contact us</button>
         </nav>
         <div className="footer-bottom">© {new Date().getFullYear()} Dense AI. All rights reserved.</div>
       </footer>
